@@ -123,6 +123,9 @@ export class Room {
 
   addClient(client: Client): void {
     this.clients.set(client.id, client);
+    // The spectator count is derived from the connected-client set, so any
+    // connection change must rebroadcast the roster — even when no slot moves.
+    this.broadcastRoster();
   }
 
   claimSlot(clientId: string, name: string): PlayerSlot | null {
@@ -192,10 +195,12 @@ export class Room {
       if (ps.clientId === id) {
         this.slots.delete(slot);
         this.syncMatchRoster();
-        this.broadcastRoster();
         break;
       }
     }
+    // Always rebroadcast: removing a spectator changes the count without
+    // freeing a slot, and freeing a slot also changes it.
+    this.broadcastRoster();
     // Drop them from any active vote and re-check / refresh it.
     if (this.vote) {
       this.vote.accepted.delete(id);
