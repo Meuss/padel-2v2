@@ -1,0 +1,25 @@
+{
+  "name": "padel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev -w @padel/server",
+    "dev:client": "npm run dev -w @padel/client",
+    "build": "npm run build -w @padel/client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

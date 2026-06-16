@@ -1,0 +1,16 @@
+# Render Blueprint for the authoritative game server (free tier).
+# In Render: New → Blueprint → connect this repo. Render reads this file and
+# creates the service. Free web services sleep after ~15 min idle (first request
+# wakes them in ~30–60 s); the client shows a "waking up" state for that.
+services:
+  - type: web
+    name: padel-2v2-server
+    runtime: node
+    plan: free
+    region: frankfurt # closest free region to Switzerland
+    buildCommand: npm ci
+    startCommand: npm run start -w @padel/server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
