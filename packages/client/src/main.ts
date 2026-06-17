@@ -31,6 +31,9 @@ const nickInput = document.getElementById("nick-input") as HTMLInputElement;
 const nickGo = document.getElementById("nick-go")!;
 const nickMsg = document.getElementById("nick-msg")!;
 const serving = document.getElementById("serving")!;
+const loading = document.getElementById("loading")!;
+const loadingTitle = document.getElementById("loading-title")!;
+const loadingHint = document.getElementById("loading-hint")!;
 const reactbar = document.getElementById("reactbar")!;
 const reactionsEl = document.getElementById("reactions")!;
 
@@ -176,12 +179,33 @@ function renderVote(active: boolean, initiator = "", accepted = 0, needed = 0): 
   }
 }
 
+function showLoading(status: ConnStatus): void {
+  // Only relevant once the player has chosen to connect (nickname dismissed).
+  if (nickname.style.display !== "none") return;
+  loadingTitle.textContent =
+    status === "reconnecting" ? "Reconnecting…" : "Waking up the server…";
+  loadingHint.textContent =
+    status === "open"
+      ? "Connected — entering the court…"
+      : status === "reconnecting"
+        ? "The server went to sleep — waking it back up…"
+        : "Connecting…";
+  loading.classList.add("show");
+}
+
+function hideLoading(): void {
+  loading.classList.remove("show");
+}
+
 const net = new Net({
   onStatus: (s) => {
     state.status = s;
+    if (s === "closed") hideLoading();
+    else showLoading(s);
     renderHud();
   },
   onWelcome: (msg) => {
+    hideLoading();
     role = msg.role;
     state.role = msg.role;
     state.slot = msg.slot ?? "";
@@ -236,6 +260,7 @@ const net = new Net({
 // ── Nickname / connection flow ───────────────────────────────────────────────
 
 function showNickname(message = ""): void {
+  hideLoading();
   nickMsg.textContent = message;
   nickname.style.display = "flex";
   resetbtn.style.display = "none";

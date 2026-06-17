@@ -228,6 +228,57 @@
         margin-top: 10px;
         min-height: 16px;
       }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(6, 9, 20, 0.92);
+        backdrop-filter: blur(8px);
+        z-index: 11;
+      }
+      #loading.show {
+        display: flex;
+      }
+      #loading .card {
+        background: rgba(14, 20, 40, 0.95);
+        border: 1px solid rgba(120, 160, 255, 0.3);
+        border-radius: 16px;
+        padding: 32px 36px;
+        text-align: center;
+        width: 380px;
+        max-width: calc(100% - 32px);
+      }
+      #loading .spinner {
+        width: 46px;
+        height: 46px;
+        margin: 0 auto 20px;
+        border: 4px solid rgba(120, 160, 255, 0.22);
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #loading h1 {
+        font-size: 20px;
+        margin-bottom: 10px;
+      }
+      #loading p {
+        color: #aab8d8;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      #loading .hint {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #7d8db0;
+        min-height: 14px;
+      }
       #hud {
         position: fixed;
         top: 12px;
@@ -370,6 +421,18 @@
         <input id="nick-input" maxlength="16" placeholder="Your nickname" autocomplete="off" />
         <button id="nick-go">Play</button>
         <div id="nick-msg"></div>
+      </div>
+    </div>
+    <div id="loading">
+      <div class="card">
+        <div class="spinner"></div>
+        <h1 id="loading-title">Waking up the server…</h1>
+        <p>
+          This game runs on a free server that goes to sleep when no one is
+          playing. The first connection can take up to a minute while it wakes
+          up — hang tight, it's much faster after that.
+        </p>
+        <div class="hint" id="loading-hint">Connecting…</div>
       </div>
     </div>
     <div id="scoreboard"></div>
