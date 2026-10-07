@@ -1,6 +1,6 @@
 /**
  * The pro-tour score bug, bottom-left: a navy header strip over two navy team rows (colour bar,
- * team dot, name, optic ball on the serving team, games, points), and the Spanish score call in a
+ * team dot, name, optic ball on the serving team, games, points), and the score call in a
  * strip under it after each point.
  * bugModel is pure (unit tested); ScoreBug only draws a model.
  */

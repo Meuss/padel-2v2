@@ -11,7 +11,7 @@ Scope: the in-game screen (WebGL arena + DOM HUD), desktop. Mode: Experience. Au
 
 ## Direction contract
 THESIS: The match looks like a pro-tour TV feed; the HUD is broadcast graphics, never a game menu. Refuses the floating-panel, glassmorphism game HUD.
-OWN-WORLD: Night arena, floodlit blue court, black steel cage. Graphics in navy #0f1a33 / white #f4f7ff, team bars Azul and Rojo #d8383a, optic #e4f23a only on the ball, the serve dot and thin accent rules. Barlow Condensed 600/700, tabular digits, Spanish broadcast copy.
+OWN-WORLD: Night arena, floodlit blue court, black steel cage. Graphics in navy #0f1a33 / white #f4f7ff, team bars Azul and Rojo #d8383a, optic #e4f23a only on the ball, the serve dot and thin accent rules. Barlow Condensed 600/700, tabular digits, English broadcast copy; team names AZUL/ROJO.
 STORY: Players read the score at a glance, feel each hit, see who serves; between points the broadcast celebrates and replays; the final card asks "¿REVANCHA?".
 FIRST VIEWPORT: Long-lens camera behind your half; court fills the frame; only the score bug, bottom-left (~18vw), plus your marker and the Timing arc.
 FORM: Pro Tour Broadcast (category standard, executed straight); seed 9028b766.

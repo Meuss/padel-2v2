@@ -80,9 +80,9 @@ describe("bannerFor", () => {
   });
 
   it("calls a fault with a point winner DOUBLE FAULT", () => {
-    expect(bannerFor("fault", "B", 1, 1, "Double fault — long")).toEqual({
+    expect(bannerFor("fault", "B", 1, 1, "SERVE LONG")).toEqual({
       title: "DOUBLE FAULT",
-      sub: "Double fault — long",
+      sub: "SERVE LONG",
       tone: "fault",
       team: "B",
     });

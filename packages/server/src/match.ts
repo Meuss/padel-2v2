@@ -405,7 +405,7 @@ export class MatchEngine {
       return { hold: { x: 0, y: 1.2, z: 0 } };
     }
     const pointTo = other(this.teamOf(this.serverSlot!)!);
-    const action = this.endPoint(now, pointTo, `Double fault — ${why}`, highlight);
+    const action = this.endPoint(now, pointTo, why, highlight);
     // A game or set it decides is called as such; a plain point is called as the double fault.
     if (this.eventKind === "point") this.setEvent("fault", pointTo, "DOUBLE FAULT");
     return action;

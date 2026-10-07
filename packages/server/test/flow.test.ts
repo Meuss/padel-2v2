@@ -48,7 +48,7 @@ async function mixedRoom(humans: string[], bots: number) {
 }
 
 describe("structured match events", () => {
-  it("a bot point carries eventKind and the winning eventTeam, with Spanish copy", async () => {
+  it("a bot point carries eventKind and the winning eventTeam, with English copy", async () => {
     const { room, w, match } = await botRoom();
     room.step();
     expect(match().eventKind).toBe("start");

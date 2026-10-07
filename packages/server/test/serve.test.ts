@@ -134,7 +134,7 @@ describe("aimed serve with a toss", () => {
     room.stop();
   });
 
-  it("no strike before the toss expires: Fault — Missed the toss", async () => {
+  it("no strike before the toss expires: Fault — MISSED THE TOSS", async () => {
     const { room, match } = await humanVsBot();
     sendInput(room, "p1", { serve: true });
     room.step();

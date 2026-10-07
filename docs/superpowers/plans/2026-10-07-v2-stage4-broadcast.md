@@ -71,7 +71,7 @@ Glossary: `CONTEXT.md`.
   - new client message `SkipReplayMsg { t: "skipreplay" }`;
   - new server message `ReplaySkipMsg { t: "replayskip" }`;
   - constants: `PROTOCOL_VERSION = 4`.
-- `packages/server/src/match.ts`: set `eventKind` and `eventTeam` everywhere `event` is set, and change the `event` text to Spanish broadcast copy:
+- `packages/server/src/match.ts`: set `eventKind` and `eventTeam` everywhere `event` is set, and change the `event` text to Spanish broadcast copy _(superseded 2026-10-08: English copy except team names)_:
 
   | Situation | `event` | `eventKind` |
   |---|---|---|
@@ -132,7 +132,7 @@ Rules:
 
 **Files:**
 - Create: `packages/client/src/hud/hud.css` (tokens plus the shared HUD primitives), imported from `main.ts`
-- Create: `packages/client/src/hud/copy.ts`, the pure Spanish broadcast copy, with `scoreCall`, `bannerFor` and `teamLabel`
+- Create: `packages/client/src/hud/copy.ts`, the pure Spanish broadcast copy _(superseded 2026-10-08: English except team names)_, with `scoreCall`, `bannerFor` and `teamLabel`
 - Test: `packages/client/test/copy.test.ts`
 - Modify: `packages/client/index.html`:
   - add `<link rel="preconnect">` plus the Google Fonts stylesheet for Barlow Condensed 600/700 with `display=swap`;
