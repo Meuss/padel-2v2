@@ -90,8 +90,11 @@ export const TOSS = {
   aimBeyondM: 6, // the serve aim point lies |server z| + this (m) along the aim: ~this far past the net
 } as const;
 
-/** Lag compensation: how far back a swing may be judged, and how much ball history the server keeps. */
-export const LAG = { maxRewindMs: 250, historyMs: 600 } as const;
+/**
+ * Lag compensation: how far back a swing may be judged, how much ball history the server
+ * keeps, and how far (m) a held ball must jump to count as a teleport (a new flight).
+ */
+export const LAG = { maxRewindMs: 250, historyMs: 600, teleportM: 0.5 } as const;
 
 export const MATCH = {
   gamesToWinSet: 6,

@@ -142,6 +142,55 @@ describe("aimed serve with a toss", () => {
     room.stop();
   });
 
+  it("after a Fault, a click without a new toss does nothing", async () => {
+    const { room, p, match } = await humanVsBot();
+    sendInput(room, "p1", { serve: true });
+    room.step();
+    stepUntil(room, () => match().event === "Fault — second serve", 120);
+    expect(match().tossing).toBe(false);
+    // The second serve is set up after the pause.
+    expect(stepUntil(room, () => match().phase === "serve", 200)).not.toBeNull();
+    expect(match().tossing).toBe(false);
+    expect(match().awaitingServe).toBe(true);
+    const g = serveGeometry(p);
+    sendInput(room, "p1", { shot: "drive", aim: aimAt(g.from, g.centre) });
+    room.step();
+    room.step();
+    expect(match().phase).toBe("serve");
+    expect(match().tossing).toBe(false);
+    room.stop();
+  });
+
+  it("a receiver's click during the serve does not swing on the strike tick", async () => {
+    const { room, p, match } = await humanVsBot({ idleReceiver: true });
+    const g = serveGeometry(p);
+    const aim = aimAt(g.from, g.centre);
+    sendInput(room, "p1", { serve: true, aim });
+    room.step();
+    sendInput(room, "p2", { shot: "drive" }); // the receiver clicks while the toss is up
+    const apexTicks = Math.round(tossApex() * TICK_RATE);
+    for (let i = 0; i < apexTicks - 1; i++) {
+      sendInput(room, "p1", { aim });
+      room.step();
+    }
+    const from = p.messages().length;
+    sendInput(room, "p1", { shot: "drive", aim });
+    room.step(); // the strike tick
+    expect(match().phase).toBe("rally");
+    // Now put the ball right at the receiver: a fresh click must connect. Had the early
+    // click whiffed on the strike tick, the swing cooldown would still block this one.
+    const b1 = p.last("snapshot")!.players.find((s) => s.slot === "B1")!.pos;
+    room.debugPlaceBall({ x: b1.x + 0.5, y: 1, z: b1.z }, { x: 0, y: 0, z: 0 });
+    sendInput(room, "p2", { shot: "drive" });
+    for (let i = 0; i < 4; i++) room.step();
+    const shots = p
+      .messages()
+      .slice(from)
+      .flatMap((m) => (m.t === "snapshot" ? (m.shots ?? []) : []));
+    expect(shots.map((s) => `${s.slot}:${s.kind}`)).toEqual(["A1:serve", "B1:drive"]);
+    room.stop();
+  });
+
   it("the server leaving mid-toss sets up a fresh serve for the new server", async () => {
     // Three humans (A1, B1, A2), so nobody tosses on their own.
     const room = await Room.create();

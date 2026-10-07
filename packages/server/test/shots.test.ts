@@ -202,4 +202,44 @@ describe("lag-compensated shots with Timing", () => {
     expect(fence!.pos.y).toBeGreaterThan(COURT.glassHeight);
     room.stop();
   });
+
+  it("a swing rewound to before a hold teleport cannot reach the old ball", async () => {
+    // A1 serves against an idle human B1; the ball is then dropped beside A1, the serve
+    // faults on A1's side, and the ball is held at the net. B1 leaves (warm-up), and A1
+    // swings with a view from when the ball was beside them.
+    const room = await Room.create();
+    const p = fakeClient("p1");
+    const q = fakeClient("p2");
+    for (const c of [p, q]) {
+      room.addClient(c.client);
+      room.claimSlot(c.client.id, c.client.id);
+    }
+    stepUntil(room, () => p.last("snapshot") !== null, 3);
+    sendInput(room, "p1", { serve: true });
+    room.step();
+    for (let i = 0; i < 18; i++) room.step(); // strike near the top of the toss
+    sendInput(room, "p1", { shot: "drive" });
+    room.step();
+    expect(p.last("match")!.phase).toBe("rally");
+    const a1 = p.last("snapshot")!.players.find((s) => s.slot === "A1")!.pos;
+
+    room.debugPlaceBall({ x: a1.x + 0.5, y: 0.4, z: a1.z }, { x: 0, y: -2, z: 0 });
+    room.step();
+    const seen = room.serverTime; // the ball beside A1
+    expect(stepUntil(room, () => p.last("match")!.phase === "between", 15)).not.toBeNull();
+    room.removeClient("p2");
+    room.step();
+    expect(p.last("match")!.phase).toBe("warmup");
+    expect(room.serverTime - seen).toBeLessThan(LAG.maxRewindMs);
+
+    const from = p.messages().length;
+    sendInput(room, "p1", { shot: "drive", aim: AIM, view: seen });
+    for (let i = 0; i < 4; i++) room.step();
+    const shots = p
+      .messages()
+      .slice(from)
+      .flatMap((m) => (m.t === "snapshot" ? (m.shots ?? []) : []));
+    expect(shots).toEqual([]);
+    room.stop();
+  });
 });

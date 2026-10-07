@@ -40,6 +40,13 @@ export class InterpBuffer {
     return this.time;
   }
 
+  /** Forget everything (on a new welcome): a restarted server's clock starts elsewhere. */
+  reset(): void {
+    this.buf = [];
+    this.time = 0;
+    this.initialized = false;
+  }
+
   add(s: SnapshotMsg): void {
     this.buf.push(s);
     this.buf.sort((a, b) => a.serverTime - b.serverTime);

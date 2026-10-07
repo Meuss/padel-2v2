@@ -128,8 +128,11 @@ export class Room {
   private slots = new Map<Slot, PlayerSlot>();
   private tick = 0;
   private timer: NodeJS.Timeout | null = null;
-  /** Simulation clock (ms): advances exactly TICK_MS per step, so match timings follow the ticks. */
-  private clock = performance.now();
+  /**
+   * Simulation clock (ms): advances exactly TICK_MS per step, so match timings follow the ticks.
+   * Anchored at the wall clock so it keeps increasing across server restarts.
+   */
+  private clock = Date.now();
   /** Recent ball states, so swings are judged against the ball the player saw. */
   private history = new BallHistory();
   /** Bumped whenever the ball's flight changes by fiat: a hit, a serve, a relaunch, a placement. */
@@ -453,7 +456,7 @@ export class Room {
       this.physics.ballSpeed(),
       contacts.map((c) => c.kind),
     );
-    if (action.hold) this.physics.holdBall(action.hold);
+    if (action.hold) this.holdBall(action.hold);
     if (this.match.phase === "warmup") this.warmupBall(now);
     this.placeServeAvatars();
     // The ball as it is at the end of this tick: the state the snapshot shows at `clock`.
@@ -628,6 +631,16 @@ export class Room {
         ps.yaw = ps.side < 0 ? 0 : Math.PI;
       }
     }
+  }
+
+  /**
+   * Hold the ball where the match wants it. A jump of more than LAG.teleportM is a teleport:
+   * it starts a new flight, so a rewound swing can't hit a position lerped across it.
+   */
+  private holdBall(pos: Vec3): void {
+    const p = this.physics.ballPosition();
+    if (Math.hypot(pos.x - p.x, pos.y - p.y, pos.z - p.z) > LAG.teleportM) this.hitSeq++;
+    this.physics.holdBall(pos);
   }
 
   /** Keep a ball in play during warm-up so solo players can knock about. */

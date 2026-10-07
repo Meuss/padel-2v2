@@ -286,6 +286,7 @@ const net = new Net({
   },
   onWelcome: (msg) => {
     predictor.reset();
+    interp.reset();
     stepAccum = 0;
     hideLoading();
     role = msg.role;
