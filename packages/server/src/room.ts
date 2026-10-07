@@ -615,7 +615,10 @@ export class Room {
       const kind = resolveKind(requested, seen.pos.y);
       const rel = { x: seen.pos.x - racket.x, y: seen.pos.y - racket.y, z: seen.pos.z - racket.z };
       const timing = judgeTiming(timeToClosest(rel, seen.vel));
-      const v = shotVelocity(kind, timing, this.shotAim(ps));
+      // Struck on our own side: lift enough to clear the net (the far side can't happen; table lift).
+      const contact =
+        Math.sign(seen.pos.z) === ps.side ? { y: seen.pos.y, distToNet: Math.abs(seen.pos.z) } : undefined;
+      const v = shotVelocity(kind, timing, this.shotAim(ps), contact);
       this.physics.setBallVelocity(v.x, v.y, v.z);
       this.hitSeq++;
       if (inRally) this.lastHitTeam = ps.team;
@@ -733,7 +736,9 @@ export class Room {
         } else if (ps.botArmed && !swinging.has(ps.team)) {
           ps.botSwingAtS ??= this.rollSwingAt();
           const rel = { x: ball.x - racket.x, y: ball.y - racket.y, z: ball.z - racket.z };
-          if (timeToClosest(rel, vel) <= ps.botSwingAtS) {
+          // A high ball in reach is smashed at once, whatever the timing roll.
+          const smashable = ball.y > SHOT.smashHeight;
+          if (smashable || timeToClosest(rel, vel) <= ps.botSwingAtS) {
             ps.shotRequested = this.chooseBotShot(ps);
             input.aim = this.botAim(ps, at);
             ps.botArmed = false;
@@ -761,8 +766,8 @@ export class Room {
   /** A bot's swing point (time to closest, s): perfect, or one window early or late. */
   private rollSwingAt(): number {
     if (this.rng() >= BOT.offTimingChance) return 0;
-    const window = 2 * SHOT.perfectWindowS;
-    return this.rng() < 0.5 ? window : -window;
+    const offset = BOT.offTimingWindows * SHOT.perfectWindowS;
+    return this.rng() < BOT.earlyShare ? offset : -offset;
   }
 
   /** Lob when both opponents are at the net (or now and then); otherwise Drive. High balls become Smashes. */
@@ -785,7 +790,7 @@ export class Room {
       }
     }
     const targetX = nearest === null ? 0 : nearest.pos.x >= 0 ? -BOT.aimMaxX : BOT.aimMaxX;
-    const targetZ = -ps.side * COURT.length * 0.25;
+    const targetZ = -ps.side * COURT.length * BOT.aimDepthFrac;
     const dx = targetX - from.x;
     const dz = targetZ - from.z;
     const len = Math.hypot(dx, dz);

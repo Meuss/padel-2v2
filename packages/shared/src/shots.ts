@@ -1,4 +1,4 @@
-import { GRAVITY, SHOT, TOSS } from "./constants.js";
+import { COURT, GRAVITY, SHOT, TOSS } from "./constants.js";
 import type { Vec2, Vec3 } from "./messages.js";
 
 export type ShotKind = "drive" | "lob" | "smash" | "serve";
@@ -33,16 +33,47 @@ export function resolveKind(requested: "drive" | "lob", ballHeight: number): "dr
   return ballHeight > SHOT.smashHeight ? "smash" : requested;
 }
 
+/** Where a shot is struck: ball height and distance (m) to the net plane on the hitter's side. */
+export interface ShotContact {
+  y: number;
+  distToNet: number;
+}
+
+/**
+ * Vertical launch speed for a ball struck at contactY, distToNet from the net, moving at
+ * horizontalSpeed, to pass the net plane at COURT.netHeight + SHOT.netClearance (no drag).
+ */
+export function clearanceLift(
+  _kind: "drive" | "lob",
+  contactY: number,
+  distToNet: number,
+  horizontalSpeed: number,
+): number {
+  const t = distToNet / horizontalSpeed;
+  return (COURT.netHeight + SHOT.netClearance - contactY + 0.5 * GRAVITY * t * t) / t;
+}
+
 /**
  * Ball velocity for a shot. `aim` is a unit world-space XZ direction. Off-timing scales power and
  * lift and rotates the aim around +Y by aimErrorDeg. Sign convention: with x' = x·cos a - z·sin a,
  * early uses a = +aimErrorDeg (aim +z drifts to x < 0) and late uses a = -aimErrorDeg (x > 0).
+ * With a `contact`, a Drive or Lob gets at least the lift to clear the net at the table power
+ * (before off-timing scales it, so a mistimed shot can still find the net). Smash ignores it.
  */
-export function shotVelocity(kind: "drive" | "lob" | "smash", timing: Timing, aim: Vec2): Vec3 {
+export function shotVelocity(
+  kind: "drive" | "lob" | "smash",
+  timing: Timing,
+  aim: Vec2,
+  contact?: ShotContact,
+): Vec3 {
   const base = SHOT[kind];
   const off = timing !== "perfect";
+  let lift: number = base.lift;
+  if (contact && kind !== "smash" && contact.distToNet > 0) {
+    lift = Math.max(lift, clearanceLift(kind, contact.y, contact.distToNet, base.power));
+  }
   const power = off ? base.power * SHOT.offTiming.power : base.power;
-  const lift = off ? base.lift * SHOT.offTiming.lift : base.lift;
+  if (off) lift *= SHOT.offTiming.lift;
   const deg = timing === "early" ? SHOT.offTiming.aimErrorDeg : timing === "late" ? -SHOT.offTiming.aimErrorDeg : 0;
   const a = (deg * Math.PI) / 180;
   const cos = Math.cos(a);

@@ -5,11 +5,13 @@ import {
   resolveKind,
   serveTarget,
   serveTiming,
+  clearanceLift,
   shotVelocity,
   timeToClosest,
   tossApex,
   tossOffset,
 } from "../src/index.js";
+import { COURT, GRAVITY, SHOT } from "../src/constants.js";
 
 const box = { xMin: 0.4, xMax: 4.6, zNear: 0.5, zFar: 6.95, side: 1 as const };
 
@@ -105,5 +107,40 @@ describe("serveTarget", () => {
   });
   it("carries the side sign", () => {
     expect(serveTarget(aim, { ...box, side: -1 }, tossApex()).z).toBeCloseTo(-6.55);
+  });
+});
+
+describe("net clearance", () => {
+  const aim = { x: 0, z: 1 };
+  /** Height (no drag) of a ball launched from y with velocity v when it has travelled dist along z. */
+  const heightAt = (y: number, v: { y: number; z: number }, dist: number) => {
+    const t = dist / v.z;
+    return y + v.y * t - 0.5 * GRAVITY * t * t;
+  };
+
+  it("clearanceLift passes the net plane at netHeight + netClearance", () => {
+    const vy = clearanceLift("drive", 0.4, 9, 12.5);
+    expect(heightAt(0.4, { y: vy, z: 12.5 }, 9)).toBeCloseTo(COURT.netHeight + SHOT.netClearance);
+  });
+
+  it("a perfect Drive from 0.4 m, 9 m back, clears the net", () => {
+    const v = shotVelocity("drive", "perfect", aim, { y: 0.4, distToNet: 9 });
+    expect(v.y).toBeGreaterThan(SHOT.drive.lift);
+    expect(heightAt(0.4, v, 9)).toBeGreaterThan(COURT.netHeight + SHOT.netClearance - 1e-6);
+  });
+
+  it("an early Drive from the same spot gets 0.9x that lift", () => {
+    const perfect = shotVelocity("drive", "perfect", aim, { y: 0.4, distToNet: 9 });
+    const early = shotVelocity("drive", "early", aim, { y: 0.4, distToNet: 9 });
+    expect(early.y).toBeCloseTo(perfect.y * SHOT.offTiming.lift);
+  });
+
+  it("from 1.2 m, 3 m back, the table lift is already enough", () => {
+    expect(shotVelocity("drive", "perfect", aim, { y: 1.2, distToNet: 3 }).y).toBeCloseTo(SHOT.drive.lift);
+    expect(shotVelocity("lob", "perfect", aim, { y: 1.2, distToNet: 3 }).y).toBeCloseTo(SHOT.lob.lift);
+  });
+
+  it("a Smash ignores the contact", () => {
+    expect(shotVelocity("smash", "perfect", aim, { y: 0.4, distToNet: 9 }).y).toBeCloseTo(SHOT.smash.lift);
   });
 });

@@ -339,7 +339,7 @@ const net = new Net({
     renderBoards();
     maybeCheer(msg.event);
     maybeFlash();
-    if (devAutoServe) autoServe();
+    if (import.meta.env.DEV && devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
     lastHighlightKey = hk;
@@ -362,7 +362,7 @@ const net = new Net({
   },
   onSnapshot: (msg) => {
     interp.add(msg);
-    lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
+    if (import.meta.env.DEV) lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
     const shots = msg.shots ?? [];
     for (const shot of shots) {
       // Our own swing already played on the click, unless the server made it a Smash.
@@ -519,7 +519,7 @@ scene.start((dt) => {
     carryShot = i.shot ?? carryShot;
     carryServe ||= i.serve;
     const aim =
-      devAutoServe && selfLocked() && ownPos !== null
+      import.meta.env.DEV && devAutoServe && selfLocked() && ownPos !== null
         ? serveAimAtBoxCentre(ownPos)
         : ownPos !== null
         ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
@@ -581,6 +581,7 @@ scene.start((dt) => {
 });
 
 // ── Dev auto-serve (?autoserve=1) ────────────────────────────────────────────
+// Every call site is behind `import.meta.env.DEV`, so production builds drop all of this.
 // Timer-driven rather than per frame: headless SwiftShader renders at ~2 fps, slower than
 // the toss lasts, and its render clock drifts well behind the server's.
 

@@ -74,6 +74,8 @@ export const SHOT = {
   smashHeight: 2.1,
   /** |time to closest approach| (s) within which Timing is "perfect". */
   perfectWindowS: 0.08,
+  /** Drives and Lobs get at least the lift (m) to pass this far above the net tape. */
+  netClearance: 0.45,
   drive: { power: 12.5, lift: 3.6 },
   lob: { power: 7.0, lift: 9.5 },
   smash: { power: 16.0, lift: -1.5 },
@@ -91,6 +93,12 @@ export const BOT = {
   netZoneM: 4,
   /** Furthest |x| (m) a bot aims at. */
   aimMaxX: 3.5,
+  /** Bots aim this fraction of the court length deep: the middle of the opposite half. */
+  aimDepthFrac: 0.25,
+  /** An off-timed swing is this many perfect windows (SHOT.perfectWindowS) early or late. */
+  offTimingWindows: 2,
+  /** Of the off-timed swings, the share that are early (the rest are late). */
+  earlyShare: 0.5,
 } as const;
 
 export const TOSS = {
