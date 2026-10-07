@@ -72,7 +72,7 @@ function tossAndStrike(room: Room, ticks: number, aim: Vec2) {
   room.step(); // struck `ticks` ticks after the toss started
 }
 
-const isFault = (m: MatchMsg) => /fault/i.test(m.event ?? "") || /fault/i.test(m.reason ?? "");
+const isFault = (m: MatchMsg) => m.eventKind === "fault";
 
 describe("aimed serve with a toss", () => {
   it("a strike at the apex starts a rally that bounces in the box, with no Fault", async () => {
@@ -129,7 +129,7 @@ describe("aimed serve with a toss", () => {
     expect(lateTicks / TICK_RATE).toBeLessThan(TOSS.expireS);
     tossAndStrike(room, lateTicks, aimAt(g.from, g.centre));
     expect(match().phase).toBe("rally");
-    expect(stepUntil(room, () => match().event === "Fault — second serve", 120)).not.toBeNull();
+    expect(stepUntil(room, () => match().eventKind === "fault", 120)).not.toBeNull();
     expect(match().reason).toMatch(/out|long/i);
     room.stop();
   });
@@ -139,7 +139,7 @@ describe("aimed serve with a toss", () => {
     sendInput(room, "p1", { serve: true });
     room.step();
     expect(match().tossing).toBe(true);
-    const steps = stepUntil(room, () => match().event === "Fault — second serve", 120);
+    const steps = stepUntil(room, () => match().eventKind === "fault", 120);
     expect(steps).not.toBeNull();
     expect(steps! / TICK_RATE).toBeGreaterThanOrEqual(TOSS.expireS - 1 / TICK_RATE);
     expect(match().reason).toBe("Missed the toss");
@@ -151,7 +151,7 @@ describe("aimed serve with a toss", () => {
     const { room, p, match } = await humanVsBot();
     sendInput(room, "p1", { serve: true });
     room.step();
-    stepUntil(room, () => match().event === "Fault — second serve", 120);
+    stepUntil(room, () => match().eventKind === "fault", 120);
     expect(match().tossing).toBe(false);
     // The second serve is set up after the pause.
     expect(stepUntil(room, () => match().phase === "serve", 200)).not.toBeNull();

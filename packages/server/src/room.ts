@@ -31,6 +31,7 @@ import {
   type ContactEvent,
   type ContactSurface,
   type ReactionMsg,
+  type ReplaySkipMsg,
   type InputMsg,
   type KickedMsg,
   type MatchMsg,
@@ -44,11 +45,13 @@ import {
   type Vec2,
   type Vec3,
   type VoteMsg,
+  type WelcomeMsg,
 } from "@padel/shared";
 import { updateBots, type BotSeat } from "./bots.js";
 import { BallHistory, type BallSample } from "./history.js";
 import { MatchEngine } from "./match.js";
 import { mulberry32, type Rng } from "./rng.js";
+import { MatchStatsTracker } from "./stats.js";
 import { PhysicsWorld, type Contact } from "./world.js";
 
 const SLOT_ORDER: Slot[] = ["A1", "B1", "A2", "B2"];
@@ -109,6 +112,7 @@ interface PlayerSlot extends BotSeat {
   serveRequested: boolean;
   lastSwingMs: number;
   lastReactionMs: number;
+  lastSkipMs: number;
 }
 
 export interface Client {
@@ -120,6 +124,11 @@ export interface Client {
 
 const IDLE_KICK_MS = 60_000;
 const VOTE_TIMEOUT_MS = 30_000;
+const REMATCH_TIMEOUT_MS = 45_000;
+/** Who opens the Rematch vote, as its initiator. */
+const CLUB_NAME = "MEUSS PADEL CLUB";
+/** A player can skip a replay at most once per this many ms. */
+const SKIP_REPLAY_COOLDOWN_MS = 1000;
 /** Max inputs buffered per player (~133 ms at 60 Hz); older ones are dropped. */
 const MAX_QUEUED_INPUTS = 8;
 /** Longest backlog (ticks) the loop catches up on in one timer callback. */
@@ -164,8 +173,19 @@ export class Room {
   private botCounter = 0;
   /** The team that last struck the ball (serve or rally hit): bots never swing at their own team's ball. */
   private lastHitTeam: Team | null = null;
-  private vote: { accepted: Set<string>; startedAt: number; initiator: string } | null =
-    null;
+  private vote: {
+    kind: "reset" | "rematch";
+    accepted: Set<string>;
+    startedAt: number;
+    initiator: string;
+  } | null = null;
+  /** Statistics of the current match, and the match id they belong to. */
+  private stats = new MatchStatsTracker(this.clock);
+  private statsMatchId = -1;
+  /** The match id whose end has been handled (stats frozen, Rematch vote opened). */
+  private endedMatchId = -1;
+  /** Spectators who asked to Take seat during a rally, oldest first: seated at the next point break. */
+  private pendingSeats: string[] = [];
 
   private constructor(
     private physics: PhysicsWorld,
@@ -208,6 +228,11 @@ export class Room {
   /** The simulation clock (ms): the units of snapshot `serverTime` and of `InputMsg.view`. */
   get serverTime(): number {
     return this.clock;
+  }
+
+  /** Test only: the given team wins the set at once and the match ends. */
+  debugEndMatch(winner: Team): void {
+    this.match.debugEndMatch(winner);
   }
 
   /** Test and dev only: teleport the ball and give it a velocity. Counts as a new flight. */
@@ -271,23 +296,25 @@ export class Room {
 
   /** Whether this connection holds a seat (bots never count as requesters). */
   private isSeated(clientId: string): boolean {
-    for (const ps of this.slots.values()) {
-      if (ps.clientId === clientId && !ps.isBot) return true;
-    }
-    return false;
+    return this.seatOf(clientId) !== null;
   }
 
-  private fillSlot(clientId: string, name: string, isBot: boolean): PlayerSlot | null {
-    const free = SLOT_ORDER.find((s) => !this.slots.has(s));
-    if (!free) return null;
-    const team = TEAM_OF[free];
+  /** Seat a player in `seat` (replacing whoever holds it), by default the first free seat. */
+  private fillSlot(
+    clientId: string,
+    name: string,
+    isBot: boolean,
+    seat: Slot | undefined = SLOT_ORDER.find((s) => !this.slots.has(s)),
+  ): PlayerSlot | null {
+    if (!seat) return null;
+    const team = TEAM_OF[seat];
     const ps: PlayerSlot = {
       clientId,
       name,
-      slot: free,
+      slot: seat,
       team,
       side: this.match.sideOf(team),
-      pos: this.homePosition(free, this.match.sideOf(team)),
+      pos: this.homePosition(seat, this.match.sideOf(team)),
       yaw: this.match.sideOf(team) < 0 ? 0 : Math.PI,
       input: null,
       inputQueue: [],
@@ -303,15 +330,110 @@ export class Room {
       botArmed: true,
       botSwingAtS: null,
       lastReactionMs: 0,
+      lastSkipMs: 0,
     };
-    this.slots.set(free, ps);
+    this.slots.set(seat, ps);
     this.syncMatchRoster();
     this.broadcastRoster();
     return ps;
   }
 
+  /**
+   * A Spectator asks for a Seat: a free one first, else a Bot's (on the team with fewer humans).
+   * Outside a rally they are seated at once; during one the request waits for the point to end,
+   * and is dropped if no Seat is open by then. Returns whether the request was seated or queued.
+   */
+  takeSeat(clientId: string): boolean {
+    if (!this.clients.has(clientId) || this.seatOf(clientId) || !this.seatOpen()) return false;
+    if (this.match.phase !== "rally") return this.seatTaker(clientId);
+    if (!this.pendingSeats.includes(clientId)) this.pendingSeats.push(clientId);
+    return true;
+  }
+
+  /** A seated player skips the replay for everyone (at most once a second each). */
+  skipReplay(clientId: string): boolean {
+    const ps = this.seatOf(clientId);
+    if (!ps) return false;
+    const now = Date.now();
+    if (now - ps.lastSkipMs < SKIP_REPLAY_COOLDOWN_MS) return false;
+    ps.lastSkipMs = now;
+    this.sendAll(encode({ t: "replayskip" } satisfies ReplaySkipMsg));
+    return true;
+  }
+
+  /** The Welcome for a connection: a player with their seat, or a spectator. */
+  welcomeMessage(clientId: string): WelcomeMsg {
+    const ps = this.seatOf(clientId);
+    return {
+      t: "welcome",
+      selfId: clientId,
+      role: ps ? "player" : "spectator",
+      slot: ps?.slot ?? null,
+      team: ps?.team ?? null,
+      court: { ...COURT },
+      tickRate: TICK_RATE,
+      snapshotRate: SNAPSHOT_RATE,
+    };
+  }
+
+  /** Whether a Spectator could take a Seat now: one is free or held by a Bot. */
+  private seatOpen(): boolean {
+    return SLOT_ORDER.some((s) => this.slots.get(s)?.isBot ?? true);
+  }
+
+  /** The seat a Spectator takes: a free one first, else a Bot's on the team with fewer humans. */
+  private seatForTaker(): Slot | null {
+    const free = SLOT_ORDER.find((s) => !this.slots.has(s));
+    if (free) return free;
+    const humans = (team: Team) =>
+      [...this.slots.values()].filter((p) => p.team === team && !p.isBot).length;
+    const botSeats = SLOT_ORDER.filter((s) => this.slots.get(s)?.isBot);
+    // Stable sort: on a tie, seat order decides.
+    return botSeats.sort((a, b) => humans(TEAM_OF[a]) - humans(TEAM_OF[b]))[0] ?? null;
+  }
+
+  /** Seat a Spectator now, replacing a Bot where it stands, and send them a player Welcome. */
+  private seatTaker(clientId: string): boolean {
+    const client = this.clients.get(clientId);
+    if (!client || this.seatOf(clientId)) return false;
+    const slot = this.seatForTaker();
+    if (!slot) return false;
+    const bot = this.slots.get(slot);
+    const ps = this.fillSlot(clientId, client.name, false, slot)!;
+    if (bot) {
+      // Take over where the Bot stood: no teleport.
+      ps.pos = { ...bot.pos };
+      ps.yaw = bot.yaw;
+      console.log(`[seat] ${client.name} replaced ${bot.name} as ${slot}`);
+    }
+    try {
+      if (client.ws.readyState === client.ws.OPEN) client.ws.send(encode(this.welcomeMessage(clientId)));
+    } catch {
+      /* ignore */
+    }
+    // A new human voter changes what the current vote needs.
+    if (this.vote) this.broadcastVote();
+    return true;
+  }
+
+  /** At a point break, seat the Spectators who asked during the rally, oldest first. */
+  private seatPending(): void {
+    const pending = this.pendingSeats;
+    this.pendingSeats = [];
+    for (const id of pending) this.seatTaker(id);
+  }
+
+  /** The seat a human connection holds (bots never match). */
+  private seatOf(clientId: string): PlayerSlot | null {
+    for (const ps of this.slots.values()) {
+      if (ps.clientId === clientId && !ps.isBot) return ps;
+    }
+    return null;
+  }
+
   removeClient(id: string): void {
     this.clients.delete(id);
+    this.pendingSeats = this.pendingSeats.filter((p) => p !== id);
     for (const [slot, ps] of this.slots) {
       if (ps.clientId === id) {
         this.slots.delete(slot);
@@ -351,7 +473,9 @@ export class Room {
   }
 
   matchMessage(): MatchMsg {
-    return this.match.toMessage();
+    const msg = this.match.toMessage();
+    if (msg.phase === "over") msg.stats = this.currentStats().snapshot(this.clock);
+    return msg;
   }
 
   voteMessage(): VoteMsg {
@@ -360,11 +484,12 @@ export class Room {
       ? {
           t: "vote",
           active: true,
+          kind: this.vote.kind,
           initiator: this.vote.initiator,
           accepted: this.vote.accepted.size,
           needed,
         }
-      : { t: "vote", active: false, initiator: "", accepted: 0, needed };
+      : { t: "vote", active: false, kind: "reset", initiator: "", accepted: 0, needed };
   }
 
   markActivity(id: string): void {
@@ -392,6 +517,7 @@ export class Room {
     if (!this.humanPlayerIds().includes(id)) return;
     if (!this.vote) {
       this.vote = {
+        kind: "reset",
         accepted: new Set([id]),
         startedAt: Date.now(),
         initiator: this.clients.get(id)?.name ?? "Player",
@@ -424,10 +550,46 @@ export class Room {
     this.sendAll(encode(this.voteMessage()));
   }
 
+  /** The match ended: open the Rematch vote for the seated humans (replacing any reset vote). */
+  private openRematchVote(): void {
+    if (this.humanPlayerIds().length === 0) return; // nobody to vote
+    this.vote = { kind: "rematch", accepted: new Set(), startedAt: Date.now(), initiator: CLUB_NAME };
+    this.broadcastVote();
+  }
+
+  /** This match's stats tracker: a fresh one whenever a new match has started. */
+  private currentStats(): MatchStatsTracker {
+    const id = this.match.currentMatchId;
+    if (id !== this.statsMatchId) {
+      this.statsMatchId = id;
+      this.stats = new MatchStatsTracker(this.clock);
+    }
+    return this.stats;
+  }
+
+  /** After the match engine has run: count the point just won, and handle the end of a match. */
+  private trackMatch(): void {
+    const stats = this.currentStats();
+    const winner = this.match.takePointWinner();
+    if (winner) stats.point(winner);
+    const id = this.match.currentMatchId;
+    if (this.match.phase === "over" && this.endedMatchId !== id) {
+      this.endedMatchId = id;
+      stats.finish(this.clock);
+      this.openRematchVote();
+    }
+  }
+
+  /** Report a Shot in the next snapshot, and count it in the match stats (unless warming up). */
+  private recordShot(ps: PlayerSlot, shot: ShotEvent): void {
+    this.pendingShots.push(shot);
+    if (this.match.phase !== "warmup") this.currentStats().shot(ps.team, shot.kind, shot.timing);
+  }
   /** Per-tick session upkeep: vote timeout and idle auto-kick. */
   private maintainSession(): void {
     const now = Date.now();
-    if (this.vote && now - this.vote.startedAt > VOTE_TIMEOUT_MS) {
+    const timeout = this.vote?.kind === "rematch" ? REMATCH_TIMEOUT_MS : VOTE_TIMEOUT_MS;
+    if (this.vote && now - this.vote.startedAt > timeout) {
       this.vote = null;
       this.broadcastVote();
     }
@@ -471,6 +633,8 @@ export class Room {
   step(): void {
     const now = this.clock;
     this.clock += TICK_MS;
+    // Take seat requests made during a rally wait for the point to end.
+    if (this.match.phase !== "rally" && this.pendingSeats.length > 0) this.seatPending();
     // Keep each player's defended side in sync with the match (handles swaps).
     for (const ps of this.slots.values()) ps.side = this.match.sideOf(ps.team);
 
@@ -503,6 +667,7 @@ export class Room {
       contacts.map((c) => c.kind),
     );
     if (action.hold) this.holdBall(action.hold);
+    this.trackMatch();
     if (this.match.phase === "warmup") this.warmupBall(now);
     this.placeServeAvatars();
     // The ball as it is at the end of this tick: the state the snapshot shows at `clock`.
@@ -558,7 +723,7 @@ export class Room {
     this.physics.launchServe(struck.launch.from, struck.launch.to);
     this.hitSeq++;
     this.lastHitTeam = ps.team;
-    this.pendingShots.push({
+    this.recordShot(ps, {
       slot: ps.slot,
       kind: "serve",
       timing: struck.timing,
@@ -653,7 +818,7 @@ export class Room {
       this.physics.setBallVelocity(v.x, v.y, v.z);
       this.hitSeq++;
       if (inRally) this.lastHitTeam = ps.team;
-      this.pendingShots.push({ slot: ps.slot, kind, timing, pos: live.pos });
+      this.recordShot(ps, { slot: ps.slot, kind, timing, pos: live.pos });
     }
   }
 
@@ -749,14 +914,14 @@ export class Room {
   }
 
   private broadcastMatch(): void {
-    this.sendAll(encode(this.match.toMessage()));
+    this.sendAll(encode(this.matchMessage()));
   }
 
   private broadcastRoster(): void {
     const players: PlayerInfo[] = [];
     let humanPlayers = 0;
     for (const ps of this.slots.values()) {
-      players.push({ id: ps.clientId, name: ps.name, slot: ps.slot, team: ps.team });
+      players.push({ id: ps.clientId, name: ps.name, slot: ps.slot, team: ps.team, isBot: ps.isBot });
       if (!ps.isBot) humanPlayers++;
     }
     const roster: RosterMsg = {
@@ -764,6 +929,7 @@ export class Room {
       players,
       // Spectators are connected humans not occupying a player slot.
       spectatorCount: Math.max(0, this.clients.size - humanPlayers),
+      seatOpen: this.seatOpen(),
     };
     this.sendAll(encode(roster));
   }

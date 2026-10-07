@@ -28,7 +28,6 @@ import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
-import { teamFromEvent } from "./world/boards.js";
 
 const app = document.getElementById("app")!;
 const hud = document.getElementById("hud")!;
@@ -170,17 +169,22 @@ function renderBoards(): void {
   });
 }
 
-/** Cheer (and let the winners celebrate), or "ooh" at a Fault, once per new match event. */
-function maybeCheer(event: string | null): void {
-  if (event === lastCheered) return;
-  lastCheered = event;
-  const reaction = crowdReaction(event);
+/**
+ * Once per new match event: it ends the rally (the crowd settles), then the crowd cheers (and
+ * the winners celebrate) or goes "ooh" at a Fault.
+ */
+function onMatchEvent(m: MatchMsg): void {
+  const key = m.eventKind ? `${m.eventKind}|${m.eventTeam ?? ""}|${m.event ?? ""}` : null;
+  if (key === lastCheered) return;
+  lastCheered = key;
+  if (!m.eventKind) return;
+  setRallyShots(0);
+  const reaction = crowdReaction(m.eventKind);
   if (reaction?.kind === "ooh") audio.ooh();
   if (reaction?.kind !== "cheer") return;
   scene.cheer(reaction.intensity);
   audio.cheer(reaction.intensity);
-  const winner = teamFromEvent(event);
-  if (winner) scene.celebrate(winner);
+  if (m.eventTeam) scene.celebrate(m.eventTeam);
 }
 
 function setRallyShots(n: number): void {
@@ -315,6 +319,7 @@ const net = new Net({
     predictor.reset();
     interp.reset();
     events.clear();
+    scene.resetFeedback();
     stepAccum = 0;
     hideLoading();
     role = msg.role;
@@ -359,8 +364,7 @@ const net = new Net({
     match = msg;
     renderScoreboard();
     renderBoards();
-    maybeCheer(msg.event);
-    if (msg.phase === "serve" && rallyShots !== 0) setRallyShots(0);
+    onMatchEvent(msg);
     maybeFlash();
     if (import.meta.env.DEV && devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;

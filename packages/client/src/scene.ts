@@ -254,6 +254,11 @@ export class PadelScene {
     for (const e of contacts) this.feedback.contact(e);
   }
 
+  /** Clear the ball trail and ground marker (a new Welcome: the old ball is gone). */
+  resetFeedback(): void {
+    this.feedback.reset();
+  }
+
   /** Flash a red highlight on whatever caused the lost point. */
   showFault(h: FaultHighlight): void {
     const now = performance.now();

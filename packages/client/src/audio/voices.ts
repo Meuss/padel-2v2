@@ -3,7 +3,7 @@
  * that turn them into node graphs. Every builder starts at time `t`, routes into `out`
  * and returns the sources it started, all stopped by the returned `end` time.
  */
-import type { ContactSurface, ShotKind, Timing } from "@padel/shared";
+import type { ContactSurface, MatchEventKind, ShotKind, Timing } from "@padel/shared";
 import { isStale } from "../events.js";
 
 /**
@@ -92,16 +92,19 @@ export function screenPan(x: number, width: number): number {
 
 export type CrowdReaction = { kind: "cheer"; intensity: number } | { kind: "ooh" };
 
-/**
- * How the crowd reacts to a match event. The one place that reads `MatchMsg.event`'s
- * text for sound and celebration (Stage 4 replaces it with structured kinds). Pure.
- */
-export function crowdReaction(event: string | null): CrowdReaction | null {
-  if (!event) return null;
-  if (event.startsWith("Point ")) return { kind: "cheer", intensity: 0.5 };
-  if (event.startsWith("Game ") || event.startsWith("Set & Match")) return { kind: "cheer", intensity: 1 };
-  if (event.startsWith("Fault")) return { kind: "ooh" };
-  return null;
+/** How the crowd reacts to a match event, from its kind: cheer a point, game or set; "ooh" at a Fault. Pure. */
+export function crowdReaction(kind: MatchEventKind | null): CrowdReaction | null {
+  switch (kind) {
+    case "point":
+      return { kind: "cheer", intensity: 0.5 };
+    case "game":
+    case "set":
+      return { kind: "cheer", intensity: 1 };
+    case "fault":
+      return { kind: "ooh" };
+    default:
+      return null;
+  }
 }
 
 // ── Voice builders ───────────────────────────────────────────────────────────

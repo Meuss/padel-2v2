@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardMessages, teamFromEvent, type BoardState } from "../src/world/boards.js";
+import { boardMessages, type BoardState } from "../src/world/boards.js";
 
 const inMatch: BoardState = {
   phase: "rally",
@@ -49,21 +49,5 @@ describe("boardMessages", () => {
       "AZUL 3 · 2 ROJO",
       "30 – 15",
     ]);
-  });
-});
-
-describe("teamFromEvent", () => {
-  it("maps the winner named in point, game and match events to a team", () => {
-    expect(teamFromEvent("Point — Blue")).toBe("A");
-    expect(teamFromEvent("Point — Red")).toBe("B");
-    expect(teamFromEvent("Game — Red (2-3)")).toBe("B");
-    expect(teamFromEvent("Set & Match — Blue! (6-4)")).toBe("A");
-  });
-
-  it("returns null for events that have no winner", () => {
-    expect(teamFromEvent("Set reset")).toBeNull();
-    expect(teamFromEvent("Match start")).toBeNull();
-    expect(teamFromEvent("Fault — second serve")).toBeNull();
-    expect(teamFromEvent(null)).toBeNull();
   });
 });

@@ -58,7 +58,7 @@ export interface ActivityMsg {
   t: "activity";
 }
 
-/** Start or accept the current "reset the set" vote. */
+/** Start a "reset the set" vote, or accept the current vote (reset or rematch). */
 export interface VoteResetMsg {
   t: "votereset";
 }
@@ -74,6 +74,16 @@ export interface ReactMsg {
   id: string; // reaction id (image name without extension)
 }
 
+/** A Spectator asks for a Seat: a free one, or one a Bot holds. Applied at the next point break. */
+export interface TakeSeatMsg {
+  t: "takeseat";
+}
+
+/** A Player asks every client to cut the replay short and return to live. */
+export interface SkipReplayMsg {
+  t: "skipreplay";
+}
+
 export type ClientMessage =
   | JoinMsg
   | InputMsg
@@ -82,7 +92,9 @@ export type ClientMessage =
   | ActivityMsg
   | VoteResetMsg
   | VoteDeclineMsg
-  | ReactMsg;
+  | ReactMsg
+  | TakeSeatMsg
+  | SkipReplayMsg;
 
 /** Reaction ids that match the images shipped in the client's public/reactions. */
 export const REACTIONS = ["gg", "wp", "goat", "wow", "haha", "noob", "mb", "ffs"] as const;
@@ -116,6 +128,7 @@ export interface PlayerInfo {
   name: string;
   slot: Slot;
   team: Team;
+  isBot: boolean;
 }
 
 /** Roster changes (someone joined/left, role changed). */
@@ -123,6 +136,8 @@ export interface RosterMsg {
   t: "roster";
   players: PlayerInfo[];
   spectatorCount: number;
+  /** True when a Spectator could Take seat: a Seat is free or held by a Bot. */
+  seatOpen: boolean;
 }
 
 /** Per-player dynamic state in a snapshot. */
@@ -176,6 +191,31 @@ export interface FaultHighlight {
   slot?: Slot; // offending player (double hit)
 }
 
+/**
+ * What a match event is, so clients react without reading its text. A double fault is a
+ * "fault" whose `eventTeam` is the team that won the point.
+ */
+export type MatchEventKind = "point" | "game" | "set" | "fault" | "let" | "start" | "reset";
+
+export interface TeamStats {
+  /** Shots struck, serves included. */
+  shots: number;
+  /** Shots with perfect Timing. */
+  perfect: number;
+  smashes: number;
+  /** Points won. */
+  points: number;
+}
+
+export interface MatchStats {
+  A: TeamStats;
+  B: TeamStats;
+  /** Most Shots in one Rally, the serve included. */
+  longestRally: number;
+  /** Match length in seconds, from the first serve setup to the last point. */
+  durationS: number;
+}
+
 /** Scoreboard + serve state, sent whenever it changes (not every tick). */
 export interface MatchMsg {
   t: "match";
@@ -194,13 +234,19 @@ export interface MatchMsg {
   awaitingServe: boolean;
   /** True while the server's toss is in the air (Space pressed, not yet struck). */
   tossing: boolean;
-  /** Transient flash text ("Let", "Fault", "Point — Blue", "Game", "Set"…). */
+  /** Transient broadcast text ("PUNTO — AZUL", "FALTA", "LET"…), for display only: read `eventKind`. */
   event: string | null;
+  /** What `event` is; null when there is none. */
+  eventKind: MatchEventKind | null;
+  /** The team a point, game or set (or a double fault's point) went to; null otherwise. */
+  eventTeam: Team | null;
   /** Explanation of why the last point ended (shown under the flash). */
   reason: string | null;
   /** What to highlight in the scene for the last point. */
   highlight: FaultHighlight | null;
   winner: Team | null;
+  /** Match statistics, set when phase is "over"; null otherwise. */
+  stats: MatchStats | null;
 }
 
 /** Sent instead of a Welcome when the client speaks another protocol version; the server then closes. */
@@ -215,10 +261,14 @@ export interface KickedMsg {
   reason: string;
 }
 
-/** State of the current "reset the set" vote (players only). */
+/**
+ * State of the current vote (players only): a "reset" a player started, or the "rematch" vote
+ * opened when a match ends. Either one, when every seated human accepts, restarts the set.
+ */
 export interface VoteMsg {
   t: "vote";
   active: boolean;
+  kind: "reset" | "rematch";
   initiator: string; // name of who started it
   accepted: number;
   needed: number;
@@ -231,6 +281,11 @@ export interface ReactionMsg {
   id: string;
 }
 
+/** Broadcast when a Player skips the replay: every client cuts back to live. */
+export interface ReplaySkipMsg {
+  t: "replayskip";
+}
+
 export type ServerMessage =
   | WelcomeMsg
   | RosterMsg
@@ -239,7 +294,8 @@ export type ServerMessage =
   | OutdatedMsg
   | KickedMsg
   | VoteMsg
-  | ReactionMsg;
+  | ReactionMsg
+  | ReplaySkipMsg;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

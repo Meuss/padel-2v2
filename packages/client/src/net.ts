@@ -30,6 +30,8 @@ export interface NetHandlers {
   onKicked?: (reason: string) => void;
   onOutdated?: () => void;
   onReaction?: (msg: ReactionMsg) => void;
+  /** A player skipped the replay: cut back to live. */
+  onReplaySkip?: () => void;
 }
 
 const DEFAULT_URL = "ws://localhost:8080";
@@ -122,6 +124,9 @@ export class Net {
         break;
       case "reaction":
         this.handlers.onReaction?.(msg);
+        break;
+      case "replayskip":
+        this.handlers.onReplaySkip?.();
         break;
     }
   }

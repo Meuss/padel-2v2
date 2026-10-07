@@ -2,21 +2,17 @@
  * Entry point for the authoritative game server: an HTTP server (health checks /
  * Render) with a WebSocket server on top. On `join` a connection claims a player
  * slot (or becomes a spectator) and is sent a Welcome; `input` messages feed the
- * room's movement integration. The room runs the physics loop and broadcasts.
+ * room's movement integration, and the other messages map onto room methods. The room runs the physics loop and broadcasts.
  */
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import {
-  COURT,
   DEFAULT_SERVER_PORT,
   PROTOCOL_VERSION,
-  SNAPSHOT_RATE,
-  TICK_RATE,
   decodeClient,
   encode,
   sanitizeName,
   type OutdatedMsg,
-  type WelcomeMsg,
 } from "@padel/shared";
 import { Room } from "./room.js";
 
@@ -68,16 +64,7 @@ wss.on("connection", (ws) => {
       room.markActivity(id);
       client.name = sanitizeName(msg.name, `Player ${id}`);
       const ps = room.claimSlot(id, client.name);
-      const welcome: WelcomeMsg = {
-        t: "welcome",
-        selfId: id,
-        role: ps ? "player" : "spectator",
-        slot: ps?.slot ?? null,
-        team: ps?.team ?? null,
-        court: { ...COURT },
-        tickRate: TICK_RATE,
-        snapshotRate: SNAPSHOT_RATE,
-      };
+      const welcome = room.welcomeMessage(id);
       ws.send(encode(welcome));
       ws.send(encode(room.matchMessage()));
       ws.send(encode(room.voteMessage()));
@@ -101,6 +88,12 @@ wss.on("connection", (ws) => {
     } else if (msg.t === "clearbots") {
       room.markActivity(id);
       room.clearBots(id);
+    } else if (msg.t === "takeseat") {
+      room.markActivity(id);
+      room.takeSeat(id);
+    } else if (msg.t === "skipreplay") {
+      room.markActivity(id);
+      room.skipReplay(id);
     }
   });
 

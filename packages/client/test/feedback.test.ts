@@ -60,6 +60,21 @@ describe("Feedback", () => {
     expect(f.update(1).shake).toBe(0);
   });
 
+  it("reset hides the ball trail and ground marker until the ball is seen again", () => {
+    const scene = new THREE.Scene();
+    const f = new Feedback(scene, "high");
+    const trail = scene.getObjectByName("ball-trail")!;
+    const marker = scene.getObjectByName("ball-marker")!;
+    f.setBall(1, 1, 2);
+    expect(trail.visible && marker.visible).toBe(true);
+    f.reset();
+    f.update(1 / 60);
+    expect(trail.visible).toBe(false);
+    expect(marker.visible).toBe(false);
+    f.setBall(-3, 0.5, 4);
+    expect(trail.visible && marker.visible).toBe(true);
+  });
+
   it("does not shake for a drive, lob or serve", () => {
     const f = new Feedback(new THREE.Scene(), "low");
     f.shot(shot("drive", "early"), { x: 0, z: -5 });

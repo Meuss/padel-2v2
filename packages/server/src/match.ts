@@ -23,6 +23,7 @@ import {
   serveTiming,
   tossOffset,
   type FaultHighlight,
+  type MatchEventKind,
   type MatchMsg,
   type MatchPhase,
   type ServiceBox,
@@ -51,7 +52,8 @@ export interface EngineAction {
   hold: Vec3 | null;
 }
 
-const TEAM_NAME: Record<Team, string> = { A: "Blue", B: "Red" };
+/** Team names in broadcast copy. */
+const TEAM_CALL: Record<Team, string> = { A: "AZUL", B: "ROJO" };
 const other = (t: Team): Team => (t === "A" ? "B" : "A");
 const sign = (z: number): -1 | 1 => (z < 0 ? -1 : 1);
 const out = (ball: Vec3): FaultHighlight => ({ kind: "out", pos: { ...ball } });
@@ -96,6 +98,12 @@ export class MatchEngine {
   private betweenUntil = 0;
   private gameJustEnded = false;
   private event: string | null = null;
+  private eventKind: MatchEventKind | null = null;
+  private eventTeam: Team | null = null;
+  /** Bumped when a new match starts (first start or a reset). */
+  private matchId = 0;
+  /** The team awarded the last point, until the room takes it. */
+  private pointWinner: Team | null = null;
   private reason: string | null = null;
   private highlight: FaultHighlight | null = null;
   private dirty = true;
@@ -138,15 +146,18 @@ export class MatchEngine {
     this.serverSlot = this.receiverSlot = null;
     this.awaitingServe = false;
     this.tossing = false;
-    this.event = this.reason = null;
+    this.setEvent(null, null);
+    this.reason = null;
     this.highlight = null;
+    this.pointWinner = null;
     this.teamSide = { A: -1, B: 1 };
     this.dirty = true;
   }
 
   private startMatch(now: number): void {
     this.reset();
-    this.event = "Match start";
+    this.matchId++;
+    this.setEvent("start", null);
     this.newGame(now);
   }
 
@@ -155,9 +166,23 @@ export class MatchEngine {
     const ready = this.teamPlayers("A").length > 0 && this.teamPlayers("B").length > 0;
     this.reset();
     if (ready) {
-      this.event = "Set reset";
+      this.matchId++;
+      this.setEvent("reset", null);
       this.newGame(now);
     }
+  }
+
+  /** Test only: award `winner` points until they take the set, and end the match. */
+  debugEndMatch(winner: Team): void {
+    if (this.phase === "warmup" || this.phase === "over") return;
+    while (!this.winner) this.awardPoint(winner);
+    this.isServe = false;
+    this.tossing = false;
+    this.awaitingServe = false;
+    this.reason = null;
+    this.highlight = null;
+    this.phase = "over";
+    this.dirty = true;
   }
 
   // ── Queries used by the room ───────────────────────────────────────────────
@@ -188,6 +213,18 @@ export class MatchEngine {
 
   get currentSetupId(): number {
     return this.setupId;
+  }
+
+  /** Changes whenever a new match starts: the room keeps one stats tracker per match. */
+  get currentMatchId(): number {
+    return this.matchId;
+  }
+
+  /** The team awarded a point since the last call, if any (each point is returned once). */
+  takePointWinner(): Team | null {
+    const w = this.pointWinner;
+    this.pointWinner = null;
+    return w;
   }
 
   /** Seconds since the toss started, or null when no toss is in the air. */
@@ -251,7 +288,7 @@ export class MatchEngine {
     this.stallSince = 0;
     this.isServe = true;
     this.serveNetTouched = false;
-    this.event = null;
+    this.setEvent(null, null);
     this.dirty = true;
     return { launch: { from, to: { ...this.targetPoint } }, timing };
   }
@@ -361,13 +398,17 @@ export class MatchEngine {
       this.replayAttempt = 2;
       this.phase = "between";
       this.betweenUntil = now + 1300;
-      this.event = "Fault — second serve";
+      this.setEvent("fault", null);
       this.reason = why;
       this.highlight = highlight;
       this.dirty = true;
       return { hold: { x: 0, y: 1.2, z: 0 } };
     }
-    return this.endPoint(now, other(this.teamOf(this.serverSlot!)!), `Double fault — ${why}`, highlight);
+    const pointTo = other(this.teamOf(this.serverSlot!)!);
+    const action = this.endPoint(now, pointTo, `Double fault — ${why}`, highlight);
+    // A game or set it decides is called as such; a plain point is called as the double fault.
+    if (this.eventKind === "point") this.setEvent("fault", pointTo, "DOBLE FALTA");
+    return action;
   }
 
   private serveLet(now: number): EngineAction {
@@ -376,7 +417,7 @@ export class MatchEngine {
     this.replayAttempt = this.serveAttempt; // a let does not use up a serve
     this.phase = "between";
     this.betweenUntil = now + 1300;
-    this.event = "Let — replay serve";
+    this.setEvent("let", null);
     this.reason = null;
     this.highlight = null;
     this.dirty = true;
@@ -486,7 +527,8 @@ export class MatchEngine {
   }
 
   private awardPoint(w: Team): void {
-    this.event = `Point — ${TEAM_NAME[w]}`;
+    this.pointWinner = w;
+    this.setEvent("point", w);
     if (this.tiebreak) {
       if (w === "A") this.tbA++;
       else this.tbB++;
@@ -512,7 +554,7 @@ export class MatchEngine {
     else this.gamesB++;
     this.ptA = this.ptB = 0;
     this.gameJustEnded = true;
-    this.event = `Game — ${TEAM_NAME[w]} (${this.gamesA}-${this.gamesB})`;
+    this.setEvent("game", w);
     const wg = w === "A" ? this.gamesA : this.gamesB;
     const og = w === "A" ? this.gamesB : this.gamesA;
     if (wg >= MATCH.gamesToWinSet && wg - og >= MATCH.setWinBy) {
@@ -525,7 +567,14 @@ export class MatchEngine {
 
   private winSet(w: Team): void {
     this.winner = w;
-    this.event = `Set & Match — ${TEAM_NAME[w]}! (${this.gamesA}-${this.gamesB})`;
+    this.setEvent("set", w);
+  }
+
+  /** Set the match event: its kind, the team it went to, and its broadcast text (from the kind unless given). */
+  private setEvent(kind: MatchEventKind | null, team: Team | null, text?: string): void {
+    this.eventKind = kind;
+    this.eventTeam = team;
+    this.event = kind === null ? null : (text ?? eventText(kind, team));
   }
 
   // ── Serve / game setup ─────────────────────────────────────────────────────
@@ -644,9 +693,33 @@ export class MatchEngine {
       awaitingServe: this.awaitingServe,
       tossing: this.tossing,
       event: this.event,
+      eventKind: this.eventKind,
+      eventTeam: this.eventTeam,
       reason: this.reason,
       highlight: this.highlight,
       winner: this.winner,
+      stats: null, // the room fills it in when the match is over
     };
+  }
+}
+
+/** Broadcast copy for a match event. */
+function eventText(kind: MatchEventKind, team: Team | null): string {
+  const to = team ? ` — ${TEAM_CALL[team]}` : "";
+  switch (kind) {
+    case "point":
+      return `PUNTO${to}`;
+    case "game":
+      return `JUEGO${to}`;
+    case "set":
+      return `SET Y PARTIDO${to}`;
+    case "fault":
+      return "FALTA";
+    case "let":
+      return "LET";
+    case "start":
+      return "PARTIDO";
+    case "reset":
+      return "REINICIO";
   }
 }

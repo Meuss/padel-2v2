@@ -268,6 +268,12 @@ class Trail {
     this.stamps[0] = now;
   }
 
+  /** Forget the ball: hidden until the next sample starts a fresh trail. */
+  reset(): void {
+    this.started = false;
+    this.mesh.visible = false;
+  }
+
   /** Rebuild the ribbon's vertices for `now`. */
   update(now: number, kind: ShotKind, intensity: number, halfWidth: number): void {
     if (!this.started) return;
@@ -490,6 +496,13 @@ export class Feedback {
     this.marker.position.set(x, MARKER.y, z);
     this.marker.scale.setScalar(MARKER.baseM + MARKER.perMetreM * h);
     this.marker.material.opacity = MARKER.opacity / (1 + MARKER.fadePerMetre * h);
+  }
+
+  /** Clear the ball trail and the ground marker until the ball is seen again. */
+  reset(): void {
+    this.trail.reset();
+    this.marker.visible = false;
+    this.smashUntil = -Infinity;
   }
 
   /** Advance every effect; returns the camera shake amplitude (m) for this frame. */

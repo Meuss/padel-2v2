@@ -145,16 +145,16 @@ describe("screenPan", () => {
 
 describe("crowdReaction", () => {
   it("cheers points, games and the match, louder for games and the match", () => {
-    expect(crowdReaction("Point — Blue")).toEqual({ kind: "cheer", intensity: 0.5 });
-    expect(crowdReaction("Game — Red (3-2)")).toEqual({ kind: "cheer", intensity: 1 });
-    expect(crowdReaction("Set & Match — Blue! (6-4)")).toEqual({ kind: "cheer", intensity: 1 });
+    expect(crowdReaction("point")).toEqual({ kind: "cheer", intensity: 0.5 });
+    expect(crowdReaction("game")).toEqual({ kind: "cheer", intensity: 1 });
+    expect(crowdReaction("set")).toEqual({ kind: "cheer", intensity: 1 });
   });
 
   it("goes 'ooh' on a Fault and stays quiet otherwise", () => {
-    expect(crowdReaction("Fault — second serve")).toEqual({ kind: "ooh" });
-    expect(crowdReaction("Let — replay serve")).toBeNull();
-    expect(crowdReaction("Set reset")).toBeNull();
-    expect(crowdReaction("Match start")).toBeNull();
+    expect(crowdReaction("fault")).toEqual({ kind: "ooh" });
+    expect(crowdReaction("let")).toBeNull();
+    expect(crowdReaction("reset")).toBeNull();
+    expect(crowdReaction("start")).toBeNull();
     expect(crowdReaction(null)).toBeNull();
   });
 });

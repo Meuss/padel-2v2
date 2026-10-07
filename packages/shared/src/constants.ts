@@ -10,7 +10,7 @@
  *   The net sits on the plane z = 0. Team A defends z < 0, Team B defends z > 0.
  */
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** Gravity (m/s²), shared by the physics world and the kinematic toss/serve maths. */
 export const GRAVITY = 9.81;
