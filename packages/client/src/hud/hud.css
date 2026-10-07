@@ -538,6 +538,94 @@ body.banner-up #serveprompt {
   }
 }
 
+/* ── REPLAY tag: top-right while an Instant replay plays (measured from comp 3) ── */
+
+/*
+ * Comp 3 at 1376×768: a --rojo plate 5.5vh tall with 2.9vh caps after a white dot, and for
+ * Players a darker key chip under it, right-aligned. It heads the top-right column.
+ */
+#replaytag {
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.8vh;
+  font-family: var(--font-broadcast);
+  text-transform: uppercase;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+body.replaying #replaytag {
+  display: flex;
+  animation: rp-in 220ms var(--ease-out);
+}
+/* Wipes in from the screen edge; the cut back to live takes it off at once. */
+@keyframes rp-in {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.rp-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  height: 5.5vh;
+  padding: 0.04em 0.42em 0 0.36em;
+  background: var(--rojo);
+  color: var(--bug-white);
+  border-radius: 0.5vh;
+  box-shadow: var(--hud-shadow);
+  font-size: 4.1vh;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.rp-dot {
+  width: 0.42em;
+  height: 0.42em;
+  margin-bottom: 0.04em;
+  border-radius: 50%;
+  background: var(--bug-white);
+}
+/* Players only: the skip key. Spectators see the plate alone. */
+.rp-skip {
+  display: none;
+  align-items: center;
+  gap: 0.4em;
+  height: 3.6vh;
+  padding: 0 0.45em 0 0.6em;
+  background: rgba(15, 26, 51, 0.88);
+  color: var(--bug-white);
+  border-radius: 0.5vh;
+  font-size: 2.4vh;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+#replaytag.skippable .rp-skip {
+  display: flex;
+}
+.rp-skip kbd {
+  padding: 0.2em 0.35em 0.12em;
+  border: 1px solid rgba(244, 247, 255, 0.85);
+  border-radius: 0.35em;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+/* A replay is not between points: the name tags step aside. */
+body.replaying #labels {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.replaying #replaytag {
+    animation: none;
+  }
+}
+
 /* ── Name tags: small condensed caps over each player, between points only ── */
 
 #labels {

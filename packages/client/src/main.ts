@@ -32,6 +32,17 @@ import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
+import {
+  clipTime,
+  isNotable,
+  isPlaying,
+  nextState,
+  pointOutcome,
+  type DirectorEvent,
+  type DirectorState,
+} from "./replay/director.js";
+import { ReplayRecorder } from "./replay/recorder.js";
+import { ReplayPlayer } from "./replay/player.js";
 import "./hud/hud.css";
 
 const app = document.getElementById("app")!;
@@ -58,6 +69,7 @@ const loadingHint = document.getElementById("loading-hint")!;
 const reactbar = document.getElementById("reactbar")!;
 const reactionsEl = document.getElementById("reactions")!;
 const mutebtn = document.getElementById("mutebtn")!;
+const replayTag = document.getElementById("replaytag")!;
 const muteIcon = mutebtn.querySelector("span")!;
 
 const BASE = import.meta.env.BASE_URL;
@@ -90,6 +102,8 @@ let devBots = 0;
 let devAutoServe = false;
 /** Dev only (?banner=<kind>): a Banner held on screen (rallies included) for screenshots. */
 let devBanner: BannerItem | null = null;
+/** Dev only (?forceReplay=1): every point is notable, so `pnpm shoot` can catch a replay. */
+let devForceReplay = false;
 
 let match: MatchMsg | null = null;
 
@@ -297,6 +311,68 @@ function hideLoading(): void {
   loading.classList.remove("show");
 }
 
+// ── Instant replay ───────────────────────────────────────────────────────────
+
+/** The last seconds of play, recorded as snapshots arrive. */
+const recorder = new ReplayRecorder();
+const replayPlayer = new ReplayPlayer(recorder);
+let director: DirectorState = { mode: "live" };
+/** Whether the replay view (Broadcast cam, recorded play, REPLAY tag) is on screen. */
+let replayShown = false;
+/** True while the Final card is up: no replay starts over it. (The Final card is not built yet.) */
+let finalCardShowing = false;
+const TICK: DirectorEvent = { t: "tick" };
+const SKIP: DirectorEvent = { t: "skip" };
+
+/**
+ * On each match update: a point that just ended may queue a replay of its clip (notable
+ * points only), and a toss or a rally start cuts a replay back to live.
+ */
+function updateDirector(m: MatchMsg, prev: MatchMsg | null): void {
+  const now = performance.now();
+  const outcome = pointOutcome(m, prev);
+  const end = recorder.newestMs;
+  if (outcome && end !== null) {
+    const notable = (import.meta.env.DEV && devForceReplay) || isNotable({ ...recorder.pointSummary(outcome.winner), ...outcome });
+    const pointStartMs = recorder.pointStartMs;
+    director = nextState(director, { t: "pointEnd", notable, pointStartMs, pointEndMs: end, finalCard: finalCardShowing }, now);
+  }
+  director = nextState(director, { t: "phase", phase: m.phase, tossing: m.tossing }, now);
+  syncReplay(now);
+}
+
+/** Show or leave the replay view to match the director (call after every director change). */
+function syncReplay(now: number): void {
+  const on = isPlaying(director, now);
+  if (on === replayShown) return;
+  replayShown = on;
+  if (on && director.mode === "replay") replayPlayer.start(director.fromMs);
+  scene.setReplay(on);
+  replayTag.classList.toggle("skippable", role === "player");
+  document.body.classList.toggle("replaying", on);
+}
+
+/** A Player skipped (us, or anyone through the server): back to live at once. */
+function skipReplay(): void {
+  const now = performance.now();
+  director = nextState(director, SKIP, now);
+  syncReplay(now);
+}
+
+/**
+ * A recorded frame's events, as the replay reaches them: swings, hit feedback and sound, as
+ * live (our own swing included), but the rally count and the crowd stay as they are.
+ */
+function playReplayEvents(_serverTime: number, shots: readonly ShotEvent[], contacts: readonly ContactEvent[]): void {
+  for (const shot of shots) scene.triggerSwing(shot.slot, shot.kind);
+  scene.onEvents(shots, contacts);
+  for (const shot of shots) audio.shot(shot.kind, shot.timing, panAt(shot.pos));
+  for (const c of contacts) audio.contact(c.surface, c.speed, panAt(c.pos));
+}
+
+/** Live events that come due during a replay are dropped: the screen shows recorded play. */
+function dropEvents(): void {}
+
 const net = new Net({
   onStatus: (s) => {
     renderConn(s);
@@ -307,6 +383,9 @@ const net = new Net({
     predictor.reset();
     interp.reset();
     events.clear();
+    recorder.reset();
+    director = { mode: "live" };
+    syncReplay(performance.now());
     scene.resetFeedback();
     stepAccum = 0;
     hideLoading();
@@ -349,6 +428,7 @@ const net = new Net({
   onMatch: (msg) => {
     scoreBug.render(bugModel(msg, match));
     updateBanner(msg, match);
+    updateDirector(msg, match);
     match = msg;
     renderTags(msg.phase);
     trackHintPhase(msg.phase);
@@ -372,12 +452,14 @@ const net = new Net({
     nickMsg.textContent = "A new version of Meuss Padel Club is out.";
     nickname.style.display = "flex";
   },
+  onReplaySkip: skipReplay,
   onReaction: (msg) => {
     showReaction(msg.slot, msg.id);
     showBoardReaction(msg.id);
   },
   onSnapshot: (msg) => {
     interp.add(msg);
+    recorder.add(msg);
     if (import.meta.env.DEV) lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
     events.schedule(msg.serverTime, msg.shots ?? [], msg.contacts ?? []);
     if (selfSlot) {
@@ -461,6 +543,7 @@ if (import.meta.env.DEV) {
   // ?quality=high|low pins the renderer quality (the shoot tool measures each level).
   const quality = q.get("quality");
   if (quality === "high" || quality === "low") scene.forceQuality(quality);
+  devForceReplay = q.get("forceReplay") === "1";
   const forced = q.get("banner");
   if (forced !== null) devBanner = devBannerItem(forced);
   const auto = q.get("join");
@@ -507,6 +590,16 @@ window.addEventListener("keydown", (e) => {
   }
   else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
     reactbar.classList.toggle("open");
+  }
+  // Enter skips the replay for everyone (Space stays the serve toss). A focused button keeps its Enter.
+  else if (
+    (e.code === "Enter" || e.code === "NumpadEnter") &&
+    role === "player" &&
+    replayShown &&
+    !(e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement)
+  ) {
+    net.send({ t: "skipreplay" });
+    skipReplay();
   }
 });
 
@@ -631,10 +724,28 @@ scene.start((dt) => {
   }
 
   interp.update(dt * 1000);
-  events.drain(interp.renderTime, playEvents, EVENT_STALE_MS);
+  const now = performance.now();
+  director = nextState(director, TICK, now);
+  syncReplay(now);
+  events.drain(interp.renderTime, replayShown ? dropEvents : playEvents, EVENT_STALE_MS);
   const s = interp.sample();
   const framePos = new Map<string, { x: number; z: number }>();
-  if (s) {
+  if (replayShown && director.mode === "replay") {
+    // Recorded play through the Broadcast cam; our predicted position keeps tracking live input.
+    const predicted = predictor.renderPosition(dt);
+    if (predicted) ownPos = { x: predicted.x, z: predicted.z };
+    if (replayPlayer.advance(clipTime(director, now), playReplayEvents)) {
+      const pose = replayPlayer.pose;
+      scene.setBall(pose.ball.x, pose.ball.y, pose.ball.z);
+      scene.setBallTarget(pose.ball.x, pose.ball.z);
+      scene.setBallSide(pose.ball.z);
+      for (let k = 0; k < pose.count; k++) {
+        const p = pose.players[k]!;
+        scene.setPlayer(p.slot, p.pos.x, p.pos.y, p.pos.z, p.yaw);
+        framePos.set(p.slot, p.pos);
+      }
+    }
+  } else if (s) {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
     scene.setBallTarget(s.ball.x, s.ball.z);
     scene.setBallSide(s.ball.z);

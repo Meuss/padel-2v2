@@ -56,6 +56,8 @@ export class PadelScene {
   private camBall: { x: number; z: number } | null = null;
   private camSide: -1 | 1 = -1;
   private camMode: "player" | "broadcast" = "broadcast";
+  /** An Instant replay is on screen: the Broadcast cam, whatever the seat. */
+  private replaying = false;
   /** The local player's ring and chevron (Player cam only). */
   private selfMarker = new SelfMarker();
   private selfSlot: Slot | null = null;
@@ -334,10 +336,20 @@ export class PadelScene {
   setPlayerCamera(team: Team): void {
     this.camTeam = team;
     this.camMode = "player";
-    this.rig.setMode("player");
+    this.rig.setMode(this.replaying ? "broadcast" : this.camMode);
   }
 
-  /** Mark the local player's avatar (null: nobody). Shown in the Player cam only, rallies included. */
+  /**
+   * Enter or leave an Instant replay: the Broadcast cam (the rig glides there and back) and no
+   * own marker. The ball jumps between the live and recorded play, so the trail starts afresh.
+   */
+  setReplay(on: boolean): void {
+    this.replaying = on;
+    this.rig.setMode(on ? "broadcast" : this.camMode);
+    this.feedback.reset();
+  }
+
+  /** Mark the local player's avatar (null: nobody). Shown in the Player cam only, rallies included, never in a replay. */
   setSelfMarker(slot: Slot | null): void {
     this.selfSlot = slot;
     if (slot) this.selfMarker.setTeam(slot.startsWith("A") ? "A" : "B");
@@ -398,7 +410,7 @@ export class PadelScene {
     }
     this.arena.update(dt);
     for (const a of this.players.values()) a.update(dt);
-    const marked = this.camMode === "player" && this.selfSlot ? this.players.get(this.selfSlot) : undefined;
+    const marked = this.camMode === "player" && !this.replaying && this.selfSlot ? this.players.get(this.selfSlot) : undefined;
     this.selfMarker.follow(marked?.root ?? null);
     this.updateMarkers(now);
     this.rig.addShake(this.feedback.update(dt).shake);
