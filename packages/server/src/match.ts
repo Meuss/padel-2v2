@@ -5,6 +5,11 @@
  * PhysicsWorld) plus hit/serve events from the room, and decides when points end
  * and why.
  *
+ * A serve is a toss (`startToss`, Space) followed by a strike (`strikeServe`, a
+ * click). How close the strike is to the top of the toss sets its Timing, which
+ * shifts where the serve lands; the landing itself is judged by the physics, so
+ * every Fault comes from what happened on court.
+ *
  * When a point is lost it records a `reason` and a `highlight` (the offending
  * bounce / wall contact / player) so the client can show what went wrong.
  */
@@ -13,11 +18,18 @@ import {
   MATCH,
   SERVE,
   SERVICE_LINE_DIST,
+  TOSS,
+  serveTarget,
+  serveTiming,
+  tossOffset,
   type FaultHighlight,
   type MatchMsg,
   type MatchPhase,
+  type ServiceBox,
   type Slot,
   type Team,
+  type Timing,
+  type Vec2,
   type Vec3,
 } from "@padel/shared";
 import type { ContactKind } from "./world.js";
@@ -42,7 +54,7 @@ export interface EngineAction {
 const TEAM_NAME: Record<Team, string> = { A: "Blue", B: "Red" };
 const other = (t: Team): Team => (t === "A" ? "B" : "A");
 const sign = (z: number): -1 | 1 => (z < 0 ? -1 : 1);
-const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+const out = (ball: Vec3): FaultHighlight => ({ kind: "out", pos: { ...ball } });
 
 export class MatchEngine {
   phase: MatchPhase = "warmup";
@@ -69,6 +81,8 @@ export class MatchEngine {
   private targetSide: -1 | 1 = 1;
   private targetXSign: -1 | 1 = -1;
   private awaitingServe = false;
+  private tossing = false;
+  private tossStartedAt = 0;
   private serverPos = { x: 0, z: 0 };
   private receiverPos = { x: 0, z: 0 };
   private holdPos: Vec3 = { x: 0, y: SERVE.height, z: 0 };
@@ -122,6 +136,7 @@ export class MatchEngine {
     this.pointsInGame = 0;
     this.serverSlot = this.receiverSlot = null;
     this.awaitingServe = false;
+    this.tossing = false;
     this.event = this.reason = null;
     this.highlight = null;
     this.teamSide = { A: -1, B: 1 };
@@ -174,12 +189,54 @@ export class MatchEngine {
     return this.setupId;
   }
 
+  /** Seconds since the toss started, or null when no toss is in the air. */
+  tossElapsed(now: number): number | null {
+    return this.tossing ? (now - this.tossStartedAt) / 1000 : null;
+  }
+
+  /** The diagonal box the current serve must land in (null outside the serve phase). */
+  serviceBox(): ServiceBox | null {
+    if (this.phase !== "serve" || !this.serverSlot) return null;
+    return {
+      xMin: this.targetXSign > 0 ? 0 : -HALF_W,
+      xMax: this.targetXSign > 0 ? HALF_W : 0,
+      zNear: 0,
+      zFar: SERVICE_LINE_DIST,
+      side: this.targetSide,
+    };
+  }
+
   // ── Events from the room ───────────────────────────────────────────────────
 
-  serve(slot: Slot): ServeLaunch | null {
-    if (this.phase !== "serve" || !this.awaitingServe || slot !== this.serverSlot) {
-      return null;
-    }
+  /** The server tosses the ball (Space). Only valid while awaiting the serve. */
+  startToss(slot: Slot, now: number): boolean {
+    if (this.phase !== "serve" || !this.awaitingServe || this.tossing) return false;
+    if (slot !== this.serverSlot) return false;
+    this.tossing = true;
+    this.tossStartedAt = now;
+    this.dirty = true;
+    return true;
+  }
+
+  /**
+   * The server strikes the toss. `aimPoint` is where they aim on the ground; the
+   * strike time relative to the top of the toss sets the Timing and how far the
+   * landing drifts long (late) or short (early). Null if no toss is in the air.
+   */
+  strikeServe(
+    slot: Slot,
+    now: number,
+    aimPoint: Vec2,
+  ): { launch: ServeLaunch; timing: Timing } | null {
+    if (this.phase !== "serve" || !this.tossing || slot !== this.serverSlot) return null;
+    const t = (now - this.tossStartedAt) / 1000;
+    if (t > TOSS.expireS) return null; // too late: tick() calls it a missed toss
+    const box = this.serviceBox()!;
+    const timing = serveTiming(t);
+    const target = serveTarget(aimPoint, box, t);
+    const from = this.tossPosition(t);
+    this.targetPoint = { x: target.x, y: 0, z: target.z };
+    this.tossing = false;
     this.awaitingServe = false;
     this.phase = "rally";
     const serverTeam = this.teamOf(slot)!;
@@ -193,7 +250,11 @@ export class MatchEngine {
     this.serveNetTouched = false;
     this.event = null;
     this.dirty = true;
-    return { from: { ...this.holdPos }, to: { ...this.targetPoint } };
+    return { launch: { from, to: { ...this.targetPoint } }, timing };
+  }
+
+  private tossPosition(t: number): Vec3 {
+    return { x: this.holdPos.x, y: this.holdPos.y + tossOffset(t), z: this.holdPos.z };
   }
 
   /** Register a swing connecting with the ball. Returns whether the hit is
@@ -228,8 +289,15 @@ export class MatchEngine {
     switch (this.phase) {
       case "warmup":
         return { hold: null };
-      case "serve":
-        return { hold: { ...this.holdPos } };
+      case "serve": {
+        if (!this.tossing) return { hold: { ...this.holdPos } };
+        const t = (now - this.tossStartedAt) / 1000;
+        const pos = this.tossPosition(t);
+        if (t > TOSS.expireS) {
+          return this.serveFault(now, "Missed the toss", { kind: "player", slot: this.serverSlot! });
+        }
+        return { hold: pos };
+      }
       case "over":
         return { hold: { x: 0, y: 1.2, z: 0 } };
       case "between":
@@ -252,7 +320,7 @@ export class MatchEngine {
         this.serveNetTouched = true;
       } else if (kind === "wall") {
         // Touched a wall before bouncing in the box — fault.
-        return this.serveFault(now, ball, "Serve hit the wall before bouncing");
+        return this.serveFault(now, "Serve hit the wall before bouncing", out(ball));
       } else if (kind === "floor") {
         const inBox =
           sign(ball.z) === this.targetSide &&
@@ -261,7 +329,7 @@ export class MatchEngine {
           sign(ball.x) === this.targetXSign &&
           Math.abs(ball.x) <= HALF_W;
         if (!inBox) {
-          return this.serveFault(now, ball, "Serve out — must land in the diagonal box");
+          return this.serveFault(now, "Serve out — must land in the diagonal box", out(ball));
         }
         if (this.serveNetTouched) {
           return this.serveLet(now); // net cord into the box → replay
@@ -276,13 +344,15 @@ export class MatchEngine {
     }
     // Left the cage before bouncing — fault.
     if (Math.abs(ball.x) > HALF_W + 0.3 || Math.abs(ball.z) > HALF_L + 0.3) {
-      return this.serveFault(now, ball, "Serve out — long");
+      return this.serveFault(now, "Serve out — long", out(ball));
     }
     return { hold: null };
   }
 
-  private serveFault(now: number, ball: Vec3, why: string): EngineAction {
+  private serveFault(now: number, why: string, highlight: FaultHighlight): EngineAction {
     this.isServe = false;
+    this.tossing = false;
+    this.awaitingServe = false;
     if (this.serveAttempt === 1) {
       this.replayServe = true;
       this.replayAttempt = 2;
@@ -290,14 +360,11 @@ export class MatchEngine {
       this.betweenUntil = now + 1300;
       this.event = "Fault — second serve";
       this.reason = why;
-      this.highlight = { kind: "out", pos: { ...ball } };
+      this.highlight = highlight;
       this.dirty = true;
       return { hold: { x: 0, y: 1.2, z: 0 } };
     }
-    return this.endPoint(now, other(this.teamOf(this.serverSlot!)!), `Double fault — ${why}`, {
-      kind: "out",
-      pos: { ...ball },
-    });
+    return this.endPoint(now, other(this.teamOf(this.serverSlot!)!), `Double fault — ${why}`, highlight);
   }
 
   private serveLet(now: number): EngineAction {
@@ -511,33 +578,6 @@ export class MatchEngine {
     this.serverPos = { x: this.serveXSign * 2.5, z: this.serveSide * (HALF_L - 0.8) };
     this.holdPos = { x: this.serverPos.x, y: SERVE.height, z: this.serverPos.z };
 
-    // Auto-serve aims deep in the box; occasionally (rarely) misses on the
-    // first serve so faults exist, almost never on the second (few double faults).
-    const faultChance = attempt === 1 ? 0.12 : 0.04;
-    if (Math.random() < faultChance) {
-      if (Math.random() < 0.5) {
-        // Long — past the service line.
-        this.targetPoint = {
-          x: this.targetXSign * rand(1.0, HALF_W - 1.2),
-          y: 0,
-          z: this.targetSide * (SERVICE_LINE_DIST + rand(0.5, 1.4)),
-        };
-      } else {
-        // Wide — into the wrong service box.
-        this.targetPoint = {
-          x: -this.targetXSign * rand(1.0, 3.0),
-          y: 0,
-          z: this.targetSide * rand(3.5, SERVICE_LINE_DIST - 0.8),
-        };
-      }
-    } else {
-      this.targetPoint = {
-        x: this.targetXSign * rand(1.0, HALF_W - 1.2),
-        y: 0,
-        z: this.targetSide * rand(3.5, SERVICE_LINE_DIST - 0.8),
-      };
-    }
-
     this.receiverPos = {
       x: this.targetXSign * 2.5,
       z: this.targetSide * (SERVICE_LINE_DIST - 0.4),
@@ -549,6 +589,8 @@ export class MatchEngine {
 
     this.phase = "serve";
     this.awaitingServe = true;
+    this.tossing = false;
+    this.tossStartedAt = 0;
     this.isServe = false;
     this.crossed = false;
     this.bouncedTarget = false;
@@ -597,6 +639,7 @@ export class MatchEngine {
       serveBox:
         serverSide === null ? null : this.serveXSign === serverSide ? "deuce" : "ad",
       awaitingServe: this.awaitingServe,
+      tossing: this.tossing,
       event: this.event,
       reason: this.reason,
       highlight: this.highlight,

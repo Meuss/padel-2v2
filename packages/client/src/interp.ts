@@ -32,8 +32,13 @@ function lerpVec(a: Vec3, b: Vec3, t: number): Vec3 {
 
 export class InterpBuffer {
   private buf: SnapshotMsg[] = [];
-  private renderTime = 0;
+  private time = 0;
   private initialized = false;
+
+  /** Server time (ms) of the state currently being rendered. */
+  get renderTime(): number {
+    return this.time;
+  }
 
   add(s: SnapshotMsg): void {
     this.buf.push(s);
@@ -43,17 +48,17 @@ export class InterpBuffer {
       this.buf.shift();
     }
     if (!this.initialized) {
-      this.renderTime = s.serverTime - INTERP_DELAY_MS;
+      this.time = s.serverTime - INTERP_DELAY_MS;
       this.initialized = true;
     }
   }
 
   update(dtMs: number): void {
     if (!this.initialized || this.buf.length === 0) return;
-    this.renderTime += dtMs;
+    this.time += dtMs;
     const target = this.buf[this.buf.length - 1]!.serverTime - INTERP_DELAY_MS;
     // Soft resync: nudge toward the target so we track the server without jumps.
-    this.renderTime += (target - this.renderTime) * 0.1;
+    this.time += (target - this.time) * 0.1;
   }
 
   /** Interpolated world state at the current render time, or null if unready. */
@@ -67,14 +72,14 @@ export class InterpBuffer {
     for (let i = 0; i < this.buf.length - 1; i++) {
       const lo = this.buf[i]!;
       const hi = this.buf[i + 1]!;
-      if (this.renderTime >= lo.serverTime && this.renderTime <= hi.serverTime) {
+      if (this.time >= lo.serverTime && this.time <= hi.serverTime) {
         a = lo;
         b = hi;
         break;
       }
     }
     const span = b.serverTime - a.serverTime;
-    const t = span > 0 ? clamp01((this.renderTime - a.serverTime) / span) : 0;
+    const t = span > 0 ? clamp01((this.time - a.serverTime) / span) : 0;
 
     const ball = lerpVec(a.ball.pos, b.ball.pos, t);
     // Interpolate players present in both snapshots; otherwise snap to latest.

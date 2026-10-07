@@ -19,10 +19,12 @@ import {
   TICK_DT,
   TICK_MS,
   TICK_RATE,
+  TOSS,
   encode,
   hitVelocity,
   stepPlayer,
   swingConnects,
+  tossApex,
   type ReactionMsg,
   type InputMsg,
   type KickedMsg,
@@ -65,10 +67,10 @@ interface PlayerSlot {
   inputQueue: InputMsg[]; // humans: one is consumed per tick, in order
   ack: number | undefined; // seq of the last input applied (humans)
   stepCredit: number; // humans: token bucket limiting inputs consumed per second
-  swingRequested: boolean;
+  /** Shot requested since the last tick that consumed it (captured on arrival). */
+  shotRequested: "drive" | "lob" | null;
   serveRequested: boolean;
   lastSwingMs: number;
-  swung: boolean;
   isBot: boolean;
   serveReadyAt: number;
   botArmed: boolean; // ready to take one swing (re-armed when the ball leaves reach)
@@ -100,6 +102,8 @@ export class Room {
   private slots = new Map<Slot, PlayerSlot>();
   private tick = 0;
   private timer: NodeJS.Timeout | null = null;
+  /** Simulation clock (ms): advances exactly TICK_MS per step, so match timings follow the ticks. */
+  private clock = performance.now();
   private lastSetupId = -1;
   private warmupIdle = 0;
   private botCounter = 0;
@@ -208,10 +212,9 @@ export class Room {
       inputQueue: [],
       ack: undefined,
       stepCredit: 0,
-      swingRequested: false,
+      shotRequested: null,
       serveRequested: false,
       lastSwingMs: 0,
-      swung: false,
       isBot,
       serveReadyAt: 0,
       botArmed: true,
@@ -248,7 +251,7 @@ export class Room {
       if (ps.clientId === clientId) {
         ps.inputQueue.push(input);
         if (ps.inputQueue.length > MAX_QUEUED_INPUTS) ps.inputQueue.shift();
-        if (input.swing) ps.swingRequested = true;
+        if (input.shot === "drive" || input.shot === "lob") ps.shotRequested = input.shot;
         if (input.serve) ps.serveRequested = true;
         return;
       }
@@ -377,13 +380,15 @@ export class Room {
 
   /** Advance the room by one fixed tick (called by the loop; public for tests). */
   step(): void {
-    const now = performance.now();
+    const now = this.clock;
+    this.clock += TICK_MS;
     // Keep each player's defended side in sync with the match (handles swaps).
     for (const ps of this.slots.values()) ps.side = this.match.sideOf(ps.team);
 
     this.updateBots(now);
-    this.handleServeRequests();
     this.integratePlayers();
+    // After integration, so a strike uses the aim of the input applied this tick.
+    this.handleServeRequests(now);
     if (this.match.phase === "rally" || this.match.phase === "warmup") {
       this.resolveSwings(now);
     }
@@ -406,17 +411,40 @@ export class Room {
     if (this.tick % 15 === 0) this.maintainSession(); // ~4×/s
   }
 
-  private handleServeRequests(): void {
+  /** Space starts the server's toss; a click while it is in the air strikes it. */
+  private handleServeRequests(now: number): void {
     const server = this.match.currentServer;
     for (const ps of this.slots.values()) {
+      if (ps.isBot || ps.slot !== server) {
+        ps.serveRequested = false;
+        continue;
+      }
       if (ps.serveRequested) {
         ps.serveRequested = false;
-        if (ps.slot === server) {
-          const launch = this.match.serve(ps.slot);
-          if (launch) this.physics.launchServe(launch.from, launch.to);
-        }
+        // A click from before the toss must not strike it at once.
+        if (this.match.startToss(ps.slot, now)) ps.shotRequested = null;
+      }
+      if (ps.shotRequested && this.match.tossElapsed(now) !== null) {
+        ps.shotRequested = null;
+        this.strikeServe(ps, now, this.serveAimPoint(ps));
       }
     }
+  }
+
+  /** The ground point along the server's aim, |z| + TOSS.aimBeyondM out: in the opponents' half. */
+  private serveAimPoint(ps: PlayerSlot): Vec2 {
+    const aim = ps.input?.aim;
+    const dir = aim && (aim.x !== 0 || aim.z !== 0) ? aim : { x: 0, z: -ps.side };
+    const len = Math.hypot(dir.x, dir.z);
+    const reach = Math.abs(ps.pos.z) + TOSS.aimBeyondM;
+    return { x: ps.pos.x + (dir.x / len) * reach, z: ps.pos.z + (dir.z / len) * reach };
+  }
+
+  private strikeServe(ps: PlayerSlot, now: number, aimPoint: Vec2): void {
+    const struck = this.match.strikeServe(ps.slot, now, aimPoint);
+    if (!struck) return;
+    this.physics.launchServe(struck.launch.from, struck.launch.to);
+    ps.botArmed = false; // don't lunge at our own serve
   }
 
   private integratePlayers(): void {
@@ -463,11 +491,11 @@ export class Room {
   private resolveSwings(now: number): void {
     const inRally = this.match.phase === "rally";
     for (const ps of this.slots.values()) {
-      if (!ps.swingRequested) continue;
-      ps.swingRequested = false;
+      // Until shot kinds land (Task 3), any requested shot is a Drive-style swing.
+      if (ps.shotRequested === null) continue;
+      ps.shotRequested = null;
       if (now - ps.lastSwingMs < SWING.cooldownMs) continue;
       ps.lastSwingMs = now;
-      ps.swung = true;
 
       const ball = this.physics.ballPosition();
       if (!swingConnects(ps.pos.x, RACKET_Y, ps.pos.z, ball, PLAYER.reach + BALL.radius)) {
@@ -551,7 +579,8 @@ export class Room {
         ts: now,
         move: { x: clamp((tx - ps.pos.x) * s), z: clamp(-(tz - ps.pos.z) * s) },
         aim: { x: clamp(-ps.pos.x * 0.15), z: -s },
-        swing: false,
+        shot: null,
+        view: 0,
         serve: false,
       };
       const dx = ball.x - ps.pos.x;
@@ -563,7 +592,7 @@ export class Room {
         const d = Math.hypot(dx, ball.y - RACKET_Y, dz);
         const inReach = d <= PLAYER.reach + BALL.radius + 0.2;
         if (inReach && ps.botArmed) {
-          ps.swingRequested = true;
+          ps.shotRequested = "drive";
           ps.botArmed = false;
         } else if (!inReach) {
           ps.botArmed = true;
@@ -572,15 +601,22 @@ export class Room {
         ps.botArmed = true;
       }
       if (phase === "serve" && server === ps.slot) {
-        if (ps.serveReadyAt === 0) ps.serveReadyAt = now + 700;
-        else if (now >= ps.serveReadyAt) {
-          ps.serveRequested = true;
-          ps.botArmed = false; // don't lunge at our own serve
-        }
+        const t = this.match.tossElapsed(now);
+        if (t !== null) {
+          // Strike on the first tick at or past the top of the toss: perfect Timing.
+          if (t >= tossApex()) this.strikeServe(ps, now, this.boxCentre());
+        } else if (ps.serveReadyAt === 0) ps.serveReadyAt = now + 700;
+        else if (now >= ps.serveReadyAt) this.match.startToss(ps.slot, now);
       } else {
         ps.serveReadyAt = 0;
       }
     }
+  }
+
+  private boxCentre(): Vec2 {
+    const box = this.match.serviceBox();
+    if (!box) return { x: 0, z: 0 };
+    return { x: (box.xMin + box.xMax) / 2, z: (box.side * (box.zNear + box.zFar)) / 2 };
   }
 
   // ── Broadcasting ─────────────────────────────────────────────────────────────
@@ -592,10 +628,8 @@ export class Room {
         slot: ps.slot,
         pos: { x: ps.pos.x, y: 0, z: ps.pos.z },
         yaw: ps.yaw,
-        swing: ps.swung,
         ...(ps.ack !== undefined && { ack: ps.ack }),
       });
-      ps.swung = false;
     }
     return out;
   }

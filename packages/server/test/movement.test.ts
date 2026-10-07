@@ -4,7 +4,7 @@ import { Room } from "../src/room.js";
 import { fakeClient } from "./fakes.js";
 
 function input(seq: number, move: Vec2): InputMsg {
-  return { t: "input", seq, ts: 0, move, aim: { x: 0, z: 1 }, swing: false, serve: false };
+  return { t: "input", seq, ts: 0, move, aim: { x: 0, z: 1 }, shot: null, view: 0, serve: false };
 }
 
 async function seatedRoom() {

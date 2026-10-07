@@ -1,10 +1,8 @@
-import { SHOT, TOSS } from "./constants.js";
+import { GRAVITY, SHOT, TOSS } from "./constants.js";
 import type { Vec2, Vec3 } from "./messages.js";
 
 export type ShotKind = "drive" | "lob" | "smash" | "serve";
 export type Timing = "early" | "perfect" | "late";
-
-const GRAVITY = 9.81;
 
 export interface ServiceBox {
   xMin: number;
@@ -76,12 +74,12 @@ export function serveTiming(t: number): Timing {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
- * Where a struck serve should land. The aim point is clamped 0.4 m inside the box; beyond the
+ * Where a struck serve should land. The aim point is clamped TOSS.boxMargin inside the box; beyond the
  * perfect window the depth |z| shifts by depthPerSecond × (|t - apex| - window), longer if late,
  * shorter if early. x keeps the clamped aim. The result is not clamped back into the box.
  */
 export function serveTarget(aimPoint: Vec2, box: ServiceBox, t: number): Vec2 {
-  const margin = 0.4;
+  const margin = TOSS.boxMargin;
   const x = clamp(aimPoint.x, box.xMin + margin, box.xMax - margin);
   let depth = clamp(Math.abs(aimPoint.z), box.zNear + margin, box.zFar - margin);
   const d = t - tossApex();

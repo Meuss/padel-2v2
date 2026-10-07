@@ -36,8 +36,9 @@ export interface InputMsg {
   ts: number; // client clock (ms) for diagnostics
   move: Vec2; // x = strafe, z = forward (player frame), components in [-1, 1]
   aim: Vec2; // normalized aim direction on the ground plane (world space)
-  swing: boolean; // true on the tick a swing is requested
-  serve: boolean; // true on the tick the serve is requested
+  shot: "drive" | "lob" | null; // the shot requested on this tick (left click = Drive, right click = Lob)
+  view: number; // server time (ms) of the snapshot state the client is rendering
+  serve: boolean; // true on the tick Space is pressed: starts the serve toss
 }
 
 /** Spawn an AI bot into a free slot (for testing / filling a match). */
@@ -128,8 +129,6 @@ export interface PlayerState {
   pos: Vec3;
   /** Facing/aim yaw in radians, for orienting the avatar + racket. */
   yaw: number;
-  /** True if this player swung since the previous snapshot (drives animation). */
-  swing?: boolean;
   /** Seq of the last input the server applied for this player (humans only). */
   ack?: number;
 }
@@ -170,6 +169,8 @@ export interface MatchMsg {
   serveBox: "deuce" | "ad" | null;
   /** True while waiting for the server to trigger the serve. */
   awaitingServe: boolean;
+  /** True while the server's toss is in the air (Space pressed, not yet struck). */
+  tossing: boolean;
   /** Transient flash text ("Let", "Fault", "Point — Blue", "Game", "Set"…). */
   event: string | null;
   /** Explanation of why the last point ended (shown under the flash). */

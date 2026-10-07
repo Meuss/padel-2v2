@@ -56,7 +56,7 @@ let ownPos: { x: number; z: number } | null = null;
 let inputSeq = 0;
 const predictor = new Predictor();
 let stepAccum = 0;
-let carrySwing = false;
+let carryShot: "drive" | "lob" | null = null;
 let carryServe = false;
 let selfYaw = 0;
 let outdated = false;
@@ -199,7 +199,7 @@ function renderScoreboard(): void {
 
   if (match.phase === "serve" && match.awaitingServe) {
     if (match.serverSlot === selfSlot) {
-      servePrompt.textContent = "🎾 Your serve — press SPACE";
+      servePrompt.textContent = match.tossing ? "Click to serve!" : "🎾 Your serve — Press SPACE to toss";
       servePrompt.className = "";
     } else {
       servePrompt.textContent = `Waiting for ${match.serverSlot} to serve…`;
@@ -358,9 +358,6 @@ const net = new Net({
       const me = msg.players.find((p) => p.slot === selfSlot);
       if (me) predictor.reconcile({ x: me.pos.x, z: me.pos.z }, me.ack, selfSide(), selfLocked());
     }
-    for (const p of msg.players) {
-      if (p.swing && p.slot !== selfSlot) scene.triggerSwing(p.slot);
-    }
   },
 });
 
@@ -502,7 +499,7 @@ scene.start((dt) => {
   if (input) {
     const i = input.poll();
     // A click between ticks must still reach the next tick.
-    carrySwing ||= i.swing;
+    carryShot = i.shot ?? carryShot;
     carryServe ||= i.serve;
     const aim =
       ownPos !== null
@@ -518,15 +515,16 @@ scene.start((dt) => {
         ts: performance.now(),
         move: i.move,
         aim,
-        swing: carrySwing,
+        shot: carryShot,
+        view: interp.renderTime,
         serve: carryServe,
       };
-      carrySwing = false;
+      carryShot = null;
       carryServe = false;
       net.send(msg);
       predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
     }
-    if (i.swing && selfSlot) scene.triggerSwing(selfSlot);
+    if (i.shot && selfSlot) scene.triggerSwing(selfSlot);
   }
 
   interp.update(dt * 1000);

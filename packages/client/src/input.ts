@@ -1,7 +1,8 @@
 /**
  * Local input capture for a player: WASD/arrows for movement, the mouse pointer
- * for aim (point at where on the court to hit), left-click to swing, Space to
- * serve. No pointer lock — the cursor position over the canvas is what aims.
+ * for aim (point at where on the court to hit), left-click for a Drive,
+ * right-click for a Lob, Space to toss the serve (then click to strike it). No
+ * pointer lock — the cursor position over the canvas is what aims.
  *
  * `move` is in the player's own frame (x = strafe right, z = forward toward the
  * net); the server maps it to world axes using the half they defend, so it stays
@@ -12,14 +13,15 @@ import type { Vec2 } from "@padel/shared";
 export interface InputState {
   move: Vec2;
   pointer: { x: number; y: number };
-  swing: boolean;
+  /** Shot clicked since the last poll: left = Drive, right = Lob. */
+  shot: "drive" | "lob" | null;
   serve: boolean;
 }
 
 export class Input {
   private keys = new Set<string>();
   private pointer = { x: 0, y: 0 };
-  private swingQueued = false;
+  private shotQueued: "drive" | "lob" | null = null;
   private serveQueued = false;
 
   constructor(private dom: HTMLElement) {
@@ -27,6 +29,7 @@ export class Input {
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("mousemove", this.onMouseMove);
     this.dom.addEventListener("mousedown", this.onMouseDown);
+    this.dom.addEventListener("contextmenu", this.onContextMenu);
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -47,7 +50,13 @@ export class Input {
   };
 
   private onMouseDown = (e: MouseEvent) => {
-    if (e.button === 0) this.swingQueued = true;
+    if (e.button === 0) this.shotQueued = "drive";
+    else if (e.button === 2) this.shotQueued = "lob";
+  };
+
+  /** Right-click is the Lob: keep the browser menu off the canvas. */
+  private onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
   };
 
   poll(): InputState {
@@ -59,11 +68,11 @@ export class Input {
     const forward = (up ? 1 : 0) - (down ? 1 : 0);
     const strafe = (right ? 1 : 0) - (left ? 1 : 0);
 
-    const swing = this.swingQueued;
+    const shot = this.shotQueued;
     const serve = this.serveQueued;
-    this.swingQueued = false;
+    this.shotQueued = null;
     this.serveQueued = false;
-    return { move: { x: strafe, z: forward }, pointer: { ...this.pointer }, swing, serve };
+    return { move: { x: strafe, z: forward }, pointer: { ...this.pointer }, shot, serve };
   }
 
   dispose(): void {
@@ -71,5 +80,6 @@ export class Input {
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("mousemove", this.onMouseMove);
     this.dom.removeEventListener("mousedown", this.onMouseDown);
+    this.dom.removeEventListener("contextmenu", this.onContextMenu);
   }
 }

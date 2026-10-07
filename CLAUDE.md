@@ -65,8 +65,9 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
   versions and retune friction/restitution in `world.ts` if needed.
 - The "using deprecated parameters for the initialization function" log at server
   start comes from Rapier's `init()`. It is harmless.
-- Bots never serve; a human must press Space. Run end-to-end checks with one real
-  client plus bots (`B`).
+- Serves are a toss (Space) then a click at the top of the toss; Bots serve
+  automatically with perfect timing. Run end-to-end checks with one real client
+  plus bots (`B`).
 - The server deliberately ignores the per-frame `input` stream for idle detection.
   Only explicit messages (`activity`, `react`, votes, bot commands) reset the 60 s
   idle-kick timer.

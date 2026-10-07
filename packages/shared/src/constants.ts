@@ -10,7 +10,10 @@
  *   The net sits on the plane z = 0. Team A defends z < 0, Team B defends z > 0.
  */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
+
+/** Gravity (m/s²), shared by the physics world and the kinematic toss/serve maths. */
+export const GRAVITY = 9.81;
 
 /** Real padel court is 20m × 10m. */
 export const COURT = {
@@ -85,6 +88,8 @@ export const TOSS = {
   expireS: 0.75, // toss falls back below the hand → "Missed the toss"
   perfectWindowS: 0.1, // |t - apex| for a clean serve
   depthPerSecond: 14, // metres of depth error per second beyond the window (late → long, early → short)
+  boxMargin: 0.4, // the aim point is clamped this far (m) inside the service box
+  aimBeyondM: 4, // the serve aim point lies |server z| + this (m) along the aim: ~this far past the net
 } as const;
 
 export const LAG = { maxRewindMs: 250, historyMs: 600 } as const;
