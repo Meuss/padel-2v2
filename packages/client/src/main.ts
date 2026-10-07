@@ -118,6 +118,29 @@ function teamOfSlot(slot: Slot | null): Team | null {
   return slot ? (slot.startsWith("A") ? "A" : "B") : null;
 }
 
+const SEATS: Slot[] = ["A1", "A2", "B1", "B2"];
+let lastCheered: string | null = null;
+
+/** Push the current match state and seated names to the LED boards. */
+function renderBoards(): void {
+  scene.setBoards({
+    phase: match?.phase ?? "warmup",
+    gamesA: match?.gamesA ?? 0,
+    gamesB: match?.gamesB ?? 0,
+    pointA: match?.pointA ?? "0",
+    pointB: match?.pointB ?? "0",
+    names: SEATS.map((s) => names.get(s)?.name ?? ""),
+    reaction: null,
+  });
+}
+
+/** Cheer once per new point/game/set event. */
+function maybeCheer(event: string | null): void {
+  if (event === lastCheered) return;
+  lastCheered = event;
+  if (event && /^(Point|Game|Set)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
+}
+
 function renderServing(): void {
   const m = match;
   if (m && m.serverSlot && (m.phase === "serve" || m.phase === "rally")) {
@@ -278,10 +301,13 @@ const net = new Net({
     for (const p of msg.players) names.set(p.slot, { name: p.name, team: p.team });
     renderHud();
     renderServing();
+    renderBoards();
   },
   onMatch: (msg) => {
     match = msg;
     renderScoreboard();
+    renderBoards();
+    maybeCheer(msg.event);
     maybeFlash();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
