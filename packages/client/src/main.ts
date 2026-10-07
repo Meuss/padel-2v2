@@ -52,6 +52,7 @@ const conn = document.getElementById("conn")!;
 const connLabel = document.getElementById("conn-label")!;
 const watching = document.getElementById("watching")!;
 const watchingN = document.getElementById("watching-n")!;
+const takeSeat = document.getElementById("takeseat") as HTMLButtonElement;
 const hint = document.getElementById("hint")!;
 const scoreBug = new ScoreBug(document.getElementById("scorebug")!);
 scoreBug.render(bugModel(null, null));
@@ -142,6 +143,22 @@ function renderWatching(spectators: number): void {
   watchingN.textContent = String(spectators);
   watching.classList.toggle("show", spectators > 0);
 }
+
+/** Spectators see "Take seat" while a seat is free; once asked it waits for the next point. */
+let seatRequested = false;
+function renderTakeSeat(seatOpen: boolean): void {
+  if (!seatOpen) seatRequested = false; // someone else got it: the request is void
+  const show = role === "spectator" && seatOpen;
+  takeSeat.classList.toggle("show", show);
+  takeSeat.disabled = seatRequested;
+  takeSeat.textContent = seatRequested ? "Joining next point…" : "Take seat";
+}
+takeSeat.addEventListener("click", () => {
+  seatRequested = true;
+  takeSeat.disabled = true;
+  takeSeat.textContent = "Joining next point…";
+  net.send({ t: "takeseat" });
+});
 
 /** How long the controls hint stays up when nobody serves. */
 const HINT_MS = 12_000;
@@ -517,6 +534,8 @@ const net = new Net({
     stepAccum = 0;
     hideLoading();
     role = msg.role;
+    seatRequested = false;
+    renderTakeSeat(false);
     // The skip key is for seated Players only.
     replayTag.classList.toggle("skippable", role === "player");
     scene.buildCourt(msg.court);
@@ -547,6 +566,7 @@ const net = new Net({
   },
   onRoster: (msg) => {
     renderWatching(msg.spectatorCount);
+    renderTakeSeat(msg.seatOpen);
     names.clear();
     for (const p of msg.players) {
       names.set(p.slot, { name: p.name, team: p.team });

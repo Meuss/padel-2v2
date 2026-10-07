@@ -193,6 +193,19 @@
   display: inline-block;
 }
 
+/** Spectators only, while a seat is free: bottom-right, where the vote panel sits for Players. */
+#takeseat {
+  position: fixed;
+  right: 4.9vw;
+  bottom: 4.6vh;
+  display: none;
+  padding: 0.8em 1.5em;
+  font-size: var(--t-sm, 1rem);
+}
+#takeseat.show {
+  display: block;
+}
+
 /* A drawn speaker: waves while sound is on, a slash through it when muted. */
 #mutebtn {
   display: grid;
