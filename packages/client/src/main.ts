@@ -146,9 +146,13 @@ function renderWatching(spectators: number): void {
 
 /** Spectators see "Take seat" while a seat is free; once asked it waits for the next point. */
 let seatRequested = false;
+let lastSeatOpen = false;
+/** Set by the first Welcome: before it the nickname screen is up and nothing may be requested. */
+let joined = false;
 function renderTakeSeat(seatOpen: boolean): void {
+  lastSeatOpen = seatOpen;
   if (!seatOpen) seatRequested = false; // someone else got it: the request is void
-  const show = role === "spectator" && seatOpen;
+  const show = joined && role === "spectator" && seatOpen;
   takeSeat.classList.toggle("show", show);
   takeSeat.disabled = seatRequested;
   takeSeat.textContent = seatRequested ? "Joining next point…" : "Take seat";
@@ -535,7 +539,8 @@ const net = new Net({
     hideLoading();
     role = msg.role;
     seatRequested = false;
-    renderTakeSeat(false);
+    joined = true;
+    renderTakeSeat(lastSeatOpen);
     // The skip key is for seated Players only.
     replayTag.classList.toggle("skippable", role === "player");
     scene.buildCourt(msg.court);

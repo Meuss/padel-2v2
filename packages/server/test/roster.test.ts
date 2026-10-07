@@ -46,3 +46,16 @@ describe("roster spectator count", () => {
     room.stop();
   });
 });
+
+describe("roster seatOpen", () => {
+  it("is true for a spectator when bots hold seats, once its roster is rebroadcast", async () => {
+    const room = await Room.create();
+    room.debugAddBots(4);
+    const spec = fakeClient("spec");
+    room.addClient(spec);
+    room.claimSlot(spec.id, spec.name);
+    room.broadcastRoster(); // what index.ts does after the Welcome
+    expect(spec.lastRoster()?.seatOpen).toBe(true);
+    room.stop();
+  });
+});

@@ -917,7 +917,8 @@ export class Room {
     this.sendAll(encode(this.matchMessage()));
   }
 
-  private broadcastRoster(): void {
+  /** Public so a fresh connection can be sent the roster again once its Welcome is out. */
+  broadcastRoster(): void {
     const players: PlayerInfo[] = [];
     let humanPlayers = 0;
     for (const ps of this.slots.values()) {

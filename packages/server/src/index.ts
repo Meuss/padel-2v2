@@ -68,6 +68,8 @@ wss.on("connection", (ws) => {
       ws.send(encode(welcome));
       ws.send(encode(room.matchMessage()));
       ws.send(encode(room.voteMessage()));
+      // The roster sent on connect reached the client before its Welcome; resend so it is current.
+      room.broadcastRoster();
       console.log(`[ws] ${id} joined as ${welcome.role}${ps ? ` ${ps.slot}` : ""}`);
     } else if (msg.t === "input") {
       room.handleInput(id, msg);
