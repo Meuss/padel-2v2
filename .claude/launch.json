@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "client",
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev:client"],
       "port": 5173
     }

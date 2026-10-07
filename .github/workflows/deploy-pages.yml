@@ -20,11 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - uses: actions/configure-pages@v5
       - name: Build client
         env:
@@ -32,7 +33,7 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
           # wss:// URL of the deployed server — set as a repo Variable (see README).
           VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
-        run: npm run build
+        run: pnpm build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: packages/client/dist

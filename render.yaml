@@ -8,9 +8,10 @@ services:
     runtime: node
     plan: free
     region: frankfurt # closest free region to Switzerland
-    buildCommand: npm ci
-    startCommand: npm run start -w @padel/server
+    # Render's bundled pnpm isn't pinned, so run the version from package.json.
+    buildCommand: npx pnpm@12.9.1 install --frozen-lockfile
+    startCommand: cd packages/server && node_modules/.bin/tsx src/index.ts
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "24"
