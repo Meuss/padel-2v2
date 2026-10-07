@@ -59,6 +59,7 @@ let carrySwing = false;
 let carryServe = false;
 let selfYaw = 0;
 let outdated = false;
+let devBots = 0;
 
 let match: MatchMsg | null = null;
 
@@ -264,6 +265,10 @@ const net = new Net({
       hint.style.display = "none";
       resetbtn.style.display = "none";
     }
+    if (msg.role === "player" && devBots > 0) {
+      for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
+      devBots = 0;
+    }
     renderHud();
   },
   onRoster: (msg) => {
@@ -334,6 +339,17 @@ nickInput.addEventListener("keydown", (e) => {
 });
 resetbtn.addEventListener("click", () => net.send({ t: "votereset" }));
 showNickname();
+
+// Dev-only: ?join=<name>&bots=<n> skips the nickname card (used by `pnpm shoot`).
+if (import.meta.env.DEV) {
+  const q = new URLSearchParams(location.search);
+  const auto = q.get("join");
+  if (auto !== null) {
+    devBots = Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0));
+    nickInput.value = auto;
+    play();
+  }
+}
 
 // ── Activity pings (throttled) so the server can idle-kick ───────────────────
 

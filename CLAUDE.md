@@ -48,6 +48,7 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
 - Reaction images live in `packages/client/public/reactions/<id>.png` and must
   match `REACTIONS` in `messages.ts`. The root `images/` folder holds the source
   copies.
+- `pnpm shoot` (dev server running) renders the game in headless Chrome and writes screenshots + render stats to `.shots/`; use it to verify visual changes.
 - Tests: `packages/**/test/*.test.ts`, run with Vitest from the root. `Room.create()`
   works headless with fake sockets (see `server/test/roster.test.ts`).
 

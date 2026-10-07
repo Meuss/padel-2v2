@@ -612,6 +612,12 @@ export class PadelScene {
     return g;
   }
 
+  /** Render counters from the last frame (used by the shoot tool and quality checks). */
+  stats(): { calls: number; triangles: number; geometries: number; textures: number } {
+    const i = this.renderer.info;
+    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures };
+  }
+
   get domElement(): HTMLCanvasElement {
     return this.renderer.domElement;
   }
