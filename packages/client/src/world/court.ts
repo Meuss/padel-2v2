@@ -15,6 +15,8 @@ const RAIL = 0.08;
 /** Metres per fence cell, and per (finer) net cell. */
 const FENCE_CELL = 0.18;
 const NET_CELL = 0.07;
+/** Environment reflection strength on the glass (the scene's own is 0.3). */
+const GLASS_REFLECTION = 1.0;
 
 /** Return `geo` moved to (x, y, z) after rotating it by `rotY` about +Y. */
 function placed(geo: THREE.BufferGeometry, x: number, y: number, z: number, rotY = 0): THREE.BufferGeometry {
@@ -124,9 +126,9 @@ export function buildCourt(
     flatStrip(LINE_W, sv * 2, 0, y, 0),
     placed(new THREE.BoxGeometry(court.width, 0.06, 0.03), 0, court.netHeight, 0),
   ];
-  root.add(
-    new THREE.Mesh(merged(lineParts), new THREE.MeshBasicMaterial({ color: PALETTE.lines })),
-  );
+  // Scaled just under the bloom threshold so the floodlit lines stay crisp instead of glowing.
+  const lineColor = new THREE.Color(PALETTE.lines).multiplyScalar(0.85);
+  root.add(new THREE.Mesh(merged(lineParts), new THREE.MeshBasicMaterial({ color: lineColor })));
 
   // ── Cage layout ──
   // Back walls: glass full width to glassH. Side walls, from each back wall: 2 m
@@ -224,10 +226,14 @@ export function buildCourt(
       color: PALETTE.glassTint,
       transmission: 0,
       transparent: true,
-      opacity: 0.12,
+      opacity: CUT_OPACITY.glassSolid,
       roughness: 0.05,
       metalness: 0,
-      envMapIntensity: 1.2,
+      // Its own reference to the scene environment, so `envMapIntensity` applies here
+      // instead of the scene's deliberately low `environmentIntensity`: the panes
+      // catch the floodlights while the rest of the night stays dark.
+      envMap: scene.environment,
+      envMapIntensity: GLASS_REFLECTION,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),

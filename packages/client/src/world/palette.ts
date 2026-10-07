@@ -9,7 +9,7 @@ export const PALETTE = {
   sky: "#05070d",
   ledBackground: "#0b1a3a",
   ledText: "#ffffff",
-  azul: "#2f6df6",
+  azul: "#62b0ff",
   rojo: "#d8383a",
   joints: "#1a1d26",
   ball: "#e4f23a",

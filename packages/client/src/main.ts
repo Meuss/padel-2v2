@@ -139,7 +139,8 @@ function renderBoards(): void {
 function maybeCheer(event: string | null): void {
   if (event === lastCheered) return;
   lastCheered = event;
-  if (event && /^(Point|Game|Set)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
+  // "Set reset" is a vote, not a win: only points, games and "Set & Match" cheer.
+  if (event && /^(Point |Game |Set & Match)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
   const winner = event && /^(Point|Game) /.test(event) ? teamFromEvent(event) : null;
   if (winner) scene.celebrate(winner);
 }
@@ -375,6 +376,9 @@ showNickname();
 // Dev-only: ?join=<name>&bots=<n> skips the nickname card (used by `pnpm shoot`).
 if (import.meta.env.DEV) {
   const q = new URLSearchParams(location.search);
+  // ?quality=high|low pins the renderer quality (the shoot tool measures each level).
+  const quality = q.get("quality");
+  if (quality === "high" || quality === "low") scene.forceQuality(quality);
   const auto = q.get("join");
   if (auto !== null) {
     devBots = Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0));

@@ -1,6 +1,6 @@
 /**
  * The Pro Tour Broadcast arena around the court: night sky and ground, four
- * stands of dark tiers with an instanced crowd, corner floodlight towers, the
+ * stands of dark tiers with an instanced crowd, floodlight rigs behind the stands, the
  * lighting rig, and the LED boards (a scrolling perimeter ribbon plus a club
  * board above each back wall).
  */
@@ -22,11 +22,17 @@ const LOW_CROWD = 0.4;
 const RIBBON_H = 0.9;
 const RIBBON_REPEAT_M = RIBBON_H * (BOARD_W / BOARD_H); // keep the canvas aspect
 const RIBBON_SPEED = 1.4; // metres per second
-const TOWER_H = 14;
+/** Height of the floodlight heads: just over the back row, so they sit in the top edge of both camera views. */
+const RIG_HEAD_Y = 4.6;
+/** Lateral positions of the floodlight rigs behind each end stand. */
+const RIG_X = [-11, -4, 4, 11];
 const CHEER_SEC = 2;
 const IDLE_STEP_SEC = 0.1; // idle breathing at 10 Hz
-// Muted, dark shirts so the crowd reads as a mass behind the bright court.
-const CROWD_COLORS = ["#141c33", "#1e3157", "#33373f", "#5c2226", "#5d626c", "#24272e", "#2a3f68"];
+// Muted, low-value shirts so the crowd reads as a dark mass behind the bright court.
+const CROWD_COLORS = ["#0b0f1a", "#101a2e", "#16181d", "#2a1214", "#23262c", "#0e1014", "#152038"];
+/** Lambert multiplier on every shirt: keeps the crowd back even under the key light. */
+const CROWD_DIM = "#b4b4b4";
+const SHADOW_MAP = { high: 2048, low: 1024 } as const;
 
 /** Small deterministic PRNG so the crowd layout is identical on every load. */
 function mulberry32(seed: number): () => number {
@@ -82,16 +88,20 @@ export class Arena {
   private cheerAge = CHEER_SEC;
   private cheerLevel = 0;
   private idleAcc = 0;
+  /** Seats kept at quality "low": the crowd's instances are ordered so these come first. */
+  private lowCount = 0;
+  private key!: THREE.DirectionalLight;
 
   constructor(scene: THREE.Scene, quality: Quality) {
     scene.background = new THREE.Color(PALETTE.sky);
-    scene.fog = new THREE.Fog(PALETTE.sky, 40, 110);
+    // Fog starts just past the stands so the ground and the far bowl melt into the night.
+    scene.fog = new THREE.Fog(PALETTE.sky, 28, 90);
 
+    // Matte and unshadowed, so the ground beyond the stands stays near-black under the key light.
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2).translate(0, -0.05, 0),
-      new THREE.MeshStandardMaterial({ color: PALETTE.ground, roughness: 1 }),
+      new THREE.MeshLambertMaterial({ color: PALETTE.ground }),
     );
-    ground.receiveShadow = true;
     scene.add(ground);
 
     const halfW = COURT.width / 2;
@@ -104,12 +114,13 @@ export class Arena {
     ];
 
     this.addStands(scene, sides);
-    const seats = this.layoutSeats(sides, quality);
+    const seats = this.layoutSeats(sides);
     this.baseY = new Float32Array(seats.length);
     this.phase = new Float32Array(seats.length);
     this.crowd = this.addCrowd(scene, seats);
-    this.addFloodlights(scene, halfW + STAND_GAP + TIERS * TIER_DEPTH + 1, halfL + STAND_GAP + TIERS * TIER_DEPTH + 1);
-    this.addLights(scene, quality);
+    this.addFloodlights(scene, halfL + STAND_GAP + TIERS * TIER_DEPTH + 0.6);
+    this.addLights(scene);
+    this.setQuality(quality);
 
     const ribbonCanvas = document.createElement("canvas");
     ribbonCanvas.width = BOARD_W;
@@ -122,6 +133,19 @@ export class Arena {
     this.addRibbon(scene, sides);
     this.addEndBoards(scene, halfL);
     this.setBoards({ phase: "warmup", gamesA: 0, gamesB: 0, pointA: "0", pointB: "0", names: [], reaction: null });
+  }
+
+  /** Thin the crowd and shrink the key light's shadow map on "low"; restore both on "high". */
+  setQuality(q: Quality): void {
+    this.crowd.count = q === "high" ? this.baseY.length : this.lowCount;
+    const size = SHADOW_MAP[q];
+    const shadow = this.key.shadow;
+    if (shadow.mapSize.x !== size) {
+      shadow.mapSize.set(size, size);
+      // The renderer reallocates the map at the new size on the next frame.
+      shadow.map?.dispose();
+      shadow.map = null;
+    }
   }
 
   /** Update the ribbon text. Cheap: only redraws the canvas when the messages change. */
@@ -154,7 +178,7 @@ export class Arena {
     if (this.cheerAge < CHEER_SEC) {
       this.cheerAge += dt;
       const amp = 0.25 * this.cheerLevel * Math.max(0, 1 - this.cheerAge / CHEER_SEC);
-      for (let i = 0; i < this.baseY.length; i++) {
+      for (let i = 0; i < this.crowd.count; i++) {
         arr[i * 16 + 13] = this.baseY[i]! + amp * Math.abs(Math.sin(this.time * 7 + this.phase[i]!));
       }
       m.needsUpdate = true;
@@ -163,7 +187,7 @@ export class Arena {
     this.idleAcc += dt;
     if (this.idleAcc < IDLE_STEP_SEC) return;
     this.idleAcc = 0;
-    for (let i = 0; i < this.baseY.length; i++) {
+    for (let i = 0; i < this.crowd.count; i++) {
       arr[i * 16 + 13] = this.baseY[i]! + 0.015 * (0.5 + 0.5 * Math.sin(this.time * 1.7 + this.phase[i]!));
     }
     m.needsUpdate = true;
@@ -171,7 +195,7 @@ export class Arena {
 
   /** Tier i of a side: a box running along the side, stepping up and back. */
   private addStands(scene: THREE.Scene, sides: Side[]): void {
-    const mat = new THREE.MeshStandardMaterial({ color: "#10141d", roughness: 0.9 });
+    const mat = new THREE.MeshLambertMaterial({ color: "#07090e" });
     for (const side of sides) {
       const parts: THREE.BufferGeometry[] = [];
       for (let i = 0; i < TIERS; i++) {
@@ -182,15 +206,18 @@ export class Arena {
         if (side.out.x !== 0) box.rotateY(Math.PI / 2);
         parts.push(box.translate(side.out.x * dist, top / 2, side.out.y * dist));
       }
-      const mesh = new THREE.Mesh(merged(parts), mat);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
+      scene.add(new THREE.Mesh(merged(parts), mat));
     }
   }
 
-  private layoutSeats(sides: Side[], quality: Quality): THREE.Vector3[] {
+  /**
+   * Every seat of the full ("high") crowd, ordered so the seats kept at "low" come
+   * first: `setQuality` then only changes the instance count.
+   */
+  private layoutSeats(sides: Side[]): THREE.Vector3[] {
     const rand = mulberry32(0x5eed);
-    const seats: THREE.Vector3[] = [];
+    const kept: THREE.Vector3[] = [];
+    const dropped: THREE.Vector3[] = [];
     for (const side of sides) {
       const along = new THREE.Vector2(-side.out.y, side.out.x);
       for (let i = 0; i < TIERS; i++) {
@@ -198,11 +225,10 @@ export class Arena {
         const count = Math.floor((2 * tierHalf(side, i, 0.5)) / SEAT_PITCH);
         const start = -((count - 1) * SEAT_PITCH) / 2;
         for (let k = 0; k < count; k++) {
-          const empty = rand() < EMPTY_SEATS;
-          const keep = quality === "high" || rand() < LOW_CROWD;
-          if (empty || !keep) continue;
+          if (rand() < EMPTY_SEATS) continue;
+          const keepAtLow = rand() < LOW_CROWD;
           const a = start + k * SEAT_PITCH + (rand() - 0.5) * 0.12;
-          seats.push(
+          (keepAtLow ? kept : dropped).push(
             new THREE.Vector3(
               side.out.x * dist + along.x * a,
               TIER_BASE + TIER_RISE * i,
@@ -212,14 +238,15 @@ export class Arena {
         }
       }
     }
-    return seats;
+    this.lowCount = kept.length;
+    return kept.concat(dropped);
   }
 
   private addCrowd(scene: THREE.Scene, seats: THREE.Vector3[]): THREE.InstancedMesh {
     const rand = mulberry32(0xc0ffee);
     const mesh = new THREE.InstancedMesh(
       spectatorGeometry(),
-      new THREE.MeshLambertMaterial({ color: "#ffffff" }),
+      new THREE.MeshLambertMaterial({ color: CROWD_DIM }),
       seats.length,
     );
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -239,28 +266,31 @@ export class Arena {
     return mesh;
   }
 
-  /** Four corner towers: steel pole plus a head of 2×4 white panels aimed at the court. */
-  private addFloodlights(scene: THREE.Scene, x: number, z: number): void {
+  /**
+   * Floodlight banks on short masts behind each end stand. Each head is a steel
+   * box carrying 2×4 bright panels aimed at the court centre. Both cameras sit
+   * behind an end, so the far end's banks show along the top edge of the frame,
+   * where the bloom makes them glow.
+   */
+  private addFloodlights(scene: THREE.Scene, z: number): void {
+    const rigs: [number, number][] = [];
+    for (const sz of [-1, 1]) for (const x of RIG_X) rigs.push([x, sz * z]);
     const steel: THREE.BufferGeometry[] = [];
     const panels: THREE.BufferGeometry[] = [];
     const aim = new THREE.Object3D();
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const px = sx * x;
-        const pz = sz * z;
-        steel.push(new THREE.CylinderGeometry(0.14, 0.22, TOWER_H, 8).translate(px, TOWER_H / 2, pz));
-        aim.position.set(px, TOWER_H + 0.6, pz);
-        aim.lookAt(0, 0, 0);
-        aim.updateMatrix();
-        steel.push(new THREE.BoxGeometry(2.6, 1.5, 0.3).translate(0, 0, -0.2).applyMatrix4(aim.matrix));
-        for (let r = 0; r < 2; r++) {
-          for (let c = 0; c < 4; c++) {
-            panels.push(
-              new THREE.PlaneGeometry(0.56, 0.6)
-                .translate(-0.93 + c * 0.62, -0.33 + r * 0.66, -0.04)
-                .applyMatrix4(aim.matrix),
-            );
-          }
+    for (const [px, pz] of rigs) {
+      steel.push(new THREE.CylinderGeometry(0.1, 0.16, RIG_HEAD_Y, 6).translate(px, RIG_HEAD_Y / 2, pz));
+      aim.position.set(px, RIG_HEAD_Y + 0.5, pz);
+      aim.lookAt(0, 0, 0);
+      aim.updateMatrix();
+      steel.push(new THREE.BoxGeometry(2.6, 1.5, 0.3).translate(0, 0, -0.2).applyMatrix4(aim.matrix));
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 4; c++) {
+          panels.push(
+            new THREE.PlaneGeometry(0.56, 0.6)
+              .translate(-0.93 + c * 0.62, -0.33 + r * 0.66, -0.04)
+              .applyMatrix4(aim.matrix),
+          );
         }
       }
     }
@@ -270,17 +300,16 @@ export class Arena {
         new THREE.MeshStandardMaterial({ color: PALETTE.steel, roughness: 0.5, metalness: 0.6 }),
       ),
     );
-    scene.add(
-      new THREE.Mesh(merged(panels), new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false })),
-    );
+    // Well above 1.0 (linear) so the bloom threshold catches the lamps and nothing on the court.
+    const lamp = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
+    lamp.color.setRGB(1.25, 1.25, 1.18);
+    scene.add(new THREE.Mesh(merged(panels), lamp));
   }
 
-  private addLights(scene: THREE.Scene, quality: Quality): void {
+  private addLights(scene: THREE.Scene): void {
     const key = new THREE.DirectionalLight("#f2f6ff", 2.2);
     key.position.set(18, 26, 6);
     key.castShadow = true;
-    const size = quality === "high" ? 2048 : 1024;
-    key.shadow.mapSize.set(size, size);
     const cam = key.shadow.camera;
     cam.left = cam.bottom = -12;
     cam.right = cam.top = 12;
@@ -289,6 +318,7 @@ export class Arena {
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
     scene.add(key);
+    this.key = key;
 
     scene.add(new THREE.HemisphereLight("#9fb4ff", "#0b0f18", 0.55));
 

@@ -1,4 +1,7 @@
-// Headless screenshot + render stats tool. Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--width n --height n] [--url u]
+// Headless screenshot + render stats tool.
+// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--width n --height n] [--url u] [--quality high|low]
+// --quality pins the renderer level (default high): SwiftShader is far too slow for the
+// automatic fallback, which would otherwise always drop to "low" mid-shot.
 import { parseArgs } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,8 +15,10 @@ const { values: o } = parseArgs({
     width: { type: "string", default: "1440" },
     height: { type: "string", default: "900" },
     url: { type: "string", default: "http://localhost:5173" },
+    quality: { type: "string", default: "high" },
   },
 });
+if (o.quality !== "high" && o.quality !== "low") throw new Error(`--quality must be high or low, got ${o.quality}`);
 const wait = Number(o.wait);
 const width = Number(o.width);
 const height = Number(o.height);
@@ -22,7 +27,7 @@ const chrome = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Conte
 async function shoot(browser, path, file, expectTags) {
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-  await page.goto(`${o.url}/${path}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${o.url}/${path}&quality=${o.quality}`, { waitUntil: "domcontentloaded" });
   try {
     await page.waitForFunction(
       (n) => window.__padelScene && document.querySelectorAll(".nametag").length >= n,

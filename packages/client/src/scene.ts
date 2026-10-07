@@ -8,6 +8,10 @@
  */
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   BALL,
   type CourtConfig,
@@ -21,6 +25,11 @@ import { broadcastCamPose, CameraRig, cutawaySide } from "./world/cameras.js";
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js";
+import { PALETTE } from "./world/palette.js";
+import { QualityMonitor, type Quality } from "./world/quality.js";
+
+const BLOOM = { strength: 0.55, radius: 0.4, threshold: 0.92 } as const;
+const MAX_PIXEL_RATIO = { high: 1.75, low: 1 } as const;
 
 export class PadelScene {
   readonly scene = new THREE.Scene();
@@ -44,19 +53,30 @@ export class PadelScene {
   private arena: Arena;
   private lastRender = performance.now();
   private markers: { mesh: THREE.Mesh; born: number; ttl: number }[] = [];
+  private quality: Quality = "high";
+  /** Picks the quality from real frame times; null once a level is forced. */
+  private monitor: QualityMonitor | null = new QualityMonitor("high");
+  /** Bloom post-processing, present on "high" only. */
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
 
   constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO.high));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
+    // The composer issues several render() calls per frame: count them all, reset per frame.
+    this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
 
     // Reflections for the glass (and later the players) come from a neutral room.
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const room = new RoomEnvironment();
+    this.scene.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
     pmrem.dispose();
     // Keep the room's fill subtle: the night arena must stay dark.
     this.scene.environmentIntensity = 0.3;
@@ -69,12 +89,13 @@ export class PadelScene {
 
     this.arena = new Arena(this.scene, "high");
 
+    // The only optic-yellow object; a faint self-glow keeps it readable against the night.
     this.ball = new THREE.Mesh(
       new THREE.SphereGeometry(BALL.radius, 24, 18),
       new THREE.MeshStandardMaterial({
-        color: 0xdcff4a,
-        emissive: 0x3a4a00,
-        emissiveIntensity: 0.4,
+        color: PALETTE.ball,
+        emissive: PALETTE.ball,
+        emissiveIntensity: 0.35,
         roughness: 0.5,
       }),
     );
@@ -82,8 +103,41 @@ export class PadelScene {
     this.ball.position.set(0, 1, 0);
     this.scene.add(this.ball);
 
-    this.onResize();
+    this.applyQuality("high");
     window.addEventListener("resize", this.onResize);
+  }
+
+  /** Pin the quality level and stop the automatic fallback (dev `?quality=` param). */
+  forceQuality(q: Quality): void {
+    this.monitor = null;
+    this.applyQuality(q);
+  }
+
+  /**
+   * The one place quality changes land. "high": bloom through an EffectComposer and a
+   * pixel ratio up to 1.75. "low": direct rendering at pixel ratio 1, a 1024 shadow map
+   * and a thinner crowd.
+   */
+  private applyQuality(q: Quality): void {
+    this.quality = q;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO[q]));
+    this.arena.setQuality(q);
+    if (q === "high" && !this.composer) {
+      // A multisampled HDR target keeps the antialiasing that the default framebuffer had.
+      const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+      const composer = new EffectComposer(this.renderer, target);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold);
+      composer.addPass(this.bloom);
+      composer.addPass(new OutputPass());
+      this.composer = composer;
+    } else if (q === "low" && this.composer) {
+      for (const pass of this.composer.passes) pass.dispose();
+      this.composer.dispose();
+      this.composer = null;
+      this.bloom = null;
+    }
+    this.onResize();
   }
 
   buildCourt(court: CourtConfig): void {
@@ -132,9 +186,15 @@ export class PadelScene {
   }
 
   /** Render counters from the last frame (used by the shoot tool and quality checks). */
-  stats(): { calls: number; triangles: number; geometries: number; textures: number } {
+  stats(): { quality: Quality; calls: number; triangles: number; geometries: number; textures: number } {
     const i = this.renderer.info;
-    return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures };
+    return {
+      quality: this.quality,
+      calls: i.render.calls,
+      triangles: i.render.triangles,
+      geometries: i.memory.geometries,
+      textures: i.memory.textures,
+    };
   }
 
   get domElement(): HTMLCanvasElement {
@@ -280,18 +340,31 @@ export class PadelScene {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // The composer resizes its passes; UnrealBloomPass halves the buffer size itself,
+    // so its first mip already runs at resolution / 2.
+    if (this.composer) {
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.setSize(w, h);
+    }
   };
 
   render(): void {
     const now = performance.now();
-    const dt = (now - this.lastRender) / 1000;
+    const frameMs = now - this.lastRender;
+    const dt = frameMs / 1000;
     this.lastRender = now;
+    if (this.monitor) {
+      const q = this.monitor.sample(frameMs, now);
+      if (q !== this.quality) this.applyQuality(q);
+    }
     this.arena.update(dt);
     for (const a of this.players.values()) a.update(dt);
     this.updateMarkers(now);
     this.rig.update(dt);
     this.endWalls?.update(cutawaySide(this.rig.cameraZ), dt);
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.info.reset();
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   }
 
   start(frame: (dt: number) => void): void {
