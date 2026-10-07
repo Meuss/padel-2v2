@@ -1,11 +1,12 @@
 // Headless screenshot + render stats tool.
-// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--autoserve] [--width n --height n] [--url u] [--quality high|low|auto]
+// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--autoserve] [--width n --height n] [--url u] [--quality high|low|auto] [--query k=v&…]
 // Each page is clicked once before the wait, to unlock audio (browsers need a gesture);
 // stats.json then includes `audio`, the dev-only count of sounds played by type.
 // --autoserve makes the player page serve by itself (toss, then a Drive at the apex), so bots rally.
 // --quality pins the renderer level (default high): SwiftShader is far too slow for the
 // automatic fallback, which would otherwise always drop to "low" mid-shot. "auto" pins
 // nothing, so the fallback runs (use a --wait longer than ~4.5 s to see it drop).
+// --query appends dev params to every page, e.g. --query banner=golden to hold a Banner.
 import { parseArgs } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,10 +22,11 @@ const { values: o } = parseArgs({
     height: { type: "string", default: "900" },
     url: { type: "string", default: "http://localhost:5173" },
     quality: { type: "string", default: "high" },
+    query: { type: "string", default: "" },
   },
 });
 if (!["high", "low", "auto"].includes(o.quality)) throw new Error(`--quality must be high, low or auto, got ${o.quality}`);
-const qualityParam = o.quality === "auto" ? "" : `&quality=${o.quality}`;
+const qualityParam = (o.quality === "auto" ? "" : `&quality=${o.quality}`) + (o.query ? `&${o.query}` : "");
 const wait = Number(o.wait);
 const width = Number(o.width);
 const height = Number(o.height);

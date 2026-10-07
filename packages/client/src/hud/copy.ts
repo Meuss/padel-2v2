@@ -40,6 +40,11 @@ export interface BannerCopy {
   team: Team | null;
 }
 
+/** The Banner for a point that makes it 40–40: the games, then the points (as in comp 3). */
+export function goldenPointBanner(gamesA: number, gamesB: number): BannerCopy {
+  return { title: "PUNTO DE ORO", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO · 40${DASH}40`, tone: "neutral", team: null };
+}
+
 /**
  * The between-point Banner for a match event, or null when the event gets none (points only
  * update the score bug and the score call). A fault that hands a team the point is a double fault.

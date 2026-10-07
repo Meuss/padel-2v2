@@ -411,33 +411,168 @@
   text-overflow: ellipsis;
 }
 
-/* ── V1 elements, kept working until Tasks 3–6 replace them ───────────────── */
+/* ── Banner: between-point lower third (measured from docs/design/v2-comp-between-points.png) ── */
+
+/*
+ * Comp 3 at 1376×768: the band spans 918 px (66.7vw), centred, its bottom 52 px (6.8vh) up.
+ * An optic rule (0.6vh) over a navy title band (10.4vh, caps 6.5vh tall), a hairline, then a
+ * navy sub band (6.5vh, caps 3.4vh tall). Square corners, flat navy, no shadow.
+ */
+#banner {
+  --bn-accent: var(--optic);
+  position: fixed;
+  left: 50%;
+  bottom: 6.8vh;
+  width: 66.7vw;
+  translate: -50% 0;
+  display: grid;
+  grid-template-rows: auto 10.4vh auto;
+  background: var(--bug-navy);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  /* Hidden: clipped away at the right edge, so the next wipe runs left to right. */
+  clip-path: inset(0 100% 0 0);
+  visibility: hidden;
+}
+#banner.in {
+  clip-path: inset(0 0 0 0);
+  visibility: visible;
+  transition: clip-path 220ms var(--ease-out);
+}
+/* The wipe out carries on to the right: the left edge closes over the band. */
+#banner.out {
+  clip-path: inset(0 0 0 100%);
+  visibility: hidden;
+  transition:
+    clip-path 180ms cubic-bezier(0.7, 0, 0.84, 0),
+    visibility 0s 180ms;
+}
+#banner[data-tone="fault"] {
+  --bn-accent: var(--rojo);
+}
+.bn-rule {
+  height: max(3px, 0.6vh);
+  background: var(--bn-accent);
+}
+/* tone "team": a team-colour block down the left edge, under the rule. */
+.bn-block {
+  position: absolute;
+  top: max(3px, 0.6vh);
+  bottom: 0;
+  left: 0;
+  width: 0.6vw;
+  display: none;
+}
+#banner[data-tone="team"] .bn-block {
+  display: block;
+}
+#banner[data-team="azul"] .bn-block {
+  background: var(--azul);
+}
+#banner[data-team="rojo"] .bn-block {
+  background: var(--rojo);
+}
+.bn-title,
+.bn-sub {
+  display: grid;
+  place-items: center;
+  padding: 0 1.6vw;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Barlow Condensed caps are 0.7em tall: 9.3vh gives the comp's 6.5vh caps; the tracking its width. */
+.bn-title {
+  padding-bottom: 0.08em;
+  font-size: 9.3vh;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.bn-sub {
+  height: 6.5vh;
+  padding-top: 0.08em;
+  border-top: 1px solid rgba(244, 247, 255, 0.26);
+  font-size: 4.8vh;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.bn-sub[hidden] {
+  display: none;
+}
+
+/* While a Banner is up the bottom-left bug and the serve prompt step aside (the comp hides the bug). */
+#scorebug,
+#serveprompt {
+  transition: opacity 180ms var(--ease-out);
+}
+body.banner-up #scorebug,
+body.banner-up #serveprompt {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A fade instead of the wipe. */
+  #banner,
+  #banner.in,
+  #banner.out {
+    clip-path: none;
+  }
+  #banner {
+    opacity: 0;
+  }
+  #banner.in {
+    opacity: 1;
+    transition: opacity 220ms linear;
+  }
+  #banner.out {
+    opacity: 0;
+    transition:
+      opacity 180ms linear,
+      visibility 0s 180ms;
+  }
+}
+
+/* ── Name tags: small condensed caps over each player, between points only ── */
 
 #labels {
   position: fixed;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
+  transition: opacity 200ms var(--ease-out);
+}
+#labels.rally {
+  opacity: 0;
 }
 #labels .nametag {
   position: absolute;
-  transform: translate(-50%, -100%);
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: rgba(8, 12, 28, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  translate: -50% -100%;
+  max-width: 16ch;
+  padding: 0.3em 0.55em 0.2em;
+  overflow: hidden;
+  background: var(--bug-navy);
+  border-bottom: 2px solid var(--azul);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-}
-#labels .nametag.A {
-  border-color: #4aa3ff;
 }
 #labels .nametag.B {
-  border-color: #ff6b6b;
+  border-bottom-color: var(--rojo);
 }
+
+/* ── V1 elements, kept working until Tasks 3–6 replace them ───────────────── */
 
 /* Lives in #topright, under the controls. */
 #votepanel {
@@ -582,20 +717,3 @@
   min-height: 14px;
 }
 
-#flash {
-  position: fixed;
-  top: 33%;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 34px;
-  font-weight: 800;
-  color: #fff;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
-  letter-spacing: 0.5px;
-}
-#flash.show {
-  opacity: 1;
-}

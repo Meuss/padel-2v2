@@ -31,6 +31,7 @@ import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js"
 import { Feedback } from "./world/feedback.js";
 import { PALETTE } from "./world/palette.js";
 import { QualityMonitor, type Quality } from "./world/quality.js";
+import { SelfMarker } from "./world/selfmarker.js";
 
 const BLOOM = { strength: 0.55, radius: 0.4, threshold: 0.92 } as const;
 const MAX_PIXEL_RATIO = { high: 1.75, low: 1 } as const;
@@ -54,6 +55,10 @@ export class PadelScene {
   private camPlayer: { x: number; z: number } | null = null;
   private camBall: { x: number; z: number } | null = null;
   private camSide: -1 | 1 = -1;
+  private camMode: "player" | "broadcast" = "broadcast";
+  /** The local player's ring and chevron (Player cam only). */
+  private selfMarker = new SelfMarker();
+  private selfSlot: Slot | null = null;
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private arena: Arena;
@@ -108,6 +113,7 @@ export class PadelScene {
     this.ball.castShadow = true;
     this.ball.position.set(0, 1, 0);
     this.scene.add(this.ball);
+    this.scene.add(this.selfMarker.root);
 
     this.applyQuality("high");
     window.addEventListener("resize", this.onResize);
@@ -321,12 +327,20 @@ export class PadelScene {
   }
 
   setSpectatorCamera(): void {
+    this.camMode = "broadcast";
     this.rig.setMode("broadcast");
   }
 
   setPlayerCamera(team: Team): void {
     this.camTeam = team;
+    this.camMode = "player";
     this.rig.setMode("player");
+  }
+
+  /** Mark the local player's avatar (null: nobody). Shown in the Player cam only, rallies included. */
+  setSelfMarker(slot: Slot | null): void {
+    this.selfSlot = slot;
+    if (slot) this.selfMarker.setTeam(slot.startsWith("A") ? "A" : "B");
   }
 
   /** Stores the local player's position; the side comes from the player's z so it stays
@@ -384,6 +398,8 @@ export class PadelScene {
     }
     this.arena.update(dt);
     for (const a of this.players.values()) a.update(dt);
+    const marked = this.camMode === "player" && this.selfSlot ? this.players.get(this.selfSlot) : undefined;
+    this.selfMarker.follow(marked?.root ?? null);
     this.updateMarkers(now);
     this.rig.addShake(this.feedback.update(dt).shake);
     this.rig.update(dt);

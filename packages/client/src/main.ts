@@ -30,6 +30,8 @@ import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
+import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
+import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import "./hud/hud.css";
 
 const app = document.getElementById("app")!;
@@ -40,7 +42,8 @@ const watchingN = document.getElementById("watching-n")!;
 const hint = document.getElementById("hint")!;
 const scoreBug = new ScoreBug(document.getElementById("scorebug")!);
 scoreBug.render(bugModel(null, null));
-const flash = document.getElementById("flash")!;
+const bannerQueue = new BannerQueue();
+const banner = new Banner(document.getElementById("banner")!, bannerQueue);
 const servePrompt = document.getElementById("serveprompt")!;
 const labels = document.getElementById("labels")!;
 const resetbtn = document.getElementById("resetbtn")!;
@@ -85,6 +88,8 @@ let outdated = false;
 let devBots = 0;
 /** Dev only (?autoserve=1): serve by itself so `pnpm shoot` can show rallies. */
 let devAutoServe = false;
+/** Dev only (?banner=<kind>): a Banner held on screen (rallies included) for screenshots. */
+let devBanner: BannerItem | null = null;
 
 let match: MatchMsg | null = null;
 
@@ -98,9 +103,7 @@ function selfSide(): -1 | 1 {
 function selfLocked(): boolean {
   return match !== null && match.phase === "serve" && match.serverSlot === selfSlot;
 }
-let lastFlashed: string | null = null;
 let lastHighlightKey: string | null = null;
-let flashTimer: number | undefined;
 const names = new Map<Slot, { name: string; team: Team }>();
 const tags = new Map<Slot, HTMLDivElement>();
 
@@ -224,24 +227,28 @@ function renderServePrompt(): void {
   servePrompt.classList.add("show");
 }
 
-function maybeFlash(): void {
-  if (!match) return;
-  if (match.phase === "serve") lastFlashed = null;
-  const e = match.event;
-  if (!e || e === lastFlashed || match.phase === "rally") return;
-  lastFlashed = e;
-  const title = document.createElement("div");
-  title.textContent = e;
-  flash.replaceChildren(title);
-  if (match.reason) {
-    const why = document.createElement("div");
-    why.style.cssText = "font-size:16px;font-weight:600;opacity:.9;margin-top:6px";
-    why.textContent = match.reason;
-    flash.append(why);
-  }
-  flash.classList.add("show");
-  window.clearTimeout(flashTimer);
-  flashTimer = window.setTimeout(() => flash.classList.remove("show"), 2000);
+/**
+ * On each match update: a new event may bring a Banner (it replaces the one on screen). The rally
+ * screen stays clean, so a rally (or warm-up) clears it; the Set Banner holds until replaced.
+ */
+function updateBanner(m: MatchMsg, prev: MatchMsg | null): void {
+  if (m.phase === "rally" || m.phase === "warmup") bannerQueue.clear();
+  const now = performance.now();
+  const item = bannerForMatch(m, prev);
+  if (item) bannerQueue.show(item, now);
+  // Dev only (?banner=<kind>): hold a Banner on screen, rallies included, for screenshots.
+  if (import.meta.env.DEV && devBanner && !bannerQueue.current(now)) bannerQueue.show(devBanner, now);
+}
+
+/** Once per frame: draw the Banner, and step the bug and serve prompt aside while it is up. */
+function tickBanner(): void {
+  banner.update(performance.now());
+  document.body.classList.toggle("banner-up", banner.showing);
+}
+
+/** Name tags show between points only: they fade out when a rally starts. */
+function renderTags(phase: MatchPhase | null): void {
+  labels.classList.toggle("rally", phase === "rally");
 }
 
 function renderVote(active: boolean, initiator = "", accepted = 0, needed = 0): void {
@@ -309,6 +316,7 @@ const net = new Net({
       selfSlot = msg.slot;
       selfTeam = msg.team;
       scene.setPlayerCamera(msg.team);
+      scene.setSelfMarker(msg.slot);
       input?.dispose();
       input = new Input(scene.domElement);
       showHint();
@@ -318,6 +326,7 @@ const net = new Net({
       input = null;
       selfSlot = null;
       scene.setSpectatorCamera();
+      scene.setSelfMarker(null);
       window.clearTimeout(hintTimer); // a seat lost mid-showing does not use up the hint
       hint.classList.remove("show");
       resetbtn.classList.remove("show");
@@ -339,12 +348,13 @@ const net = new Net({
   },
   onMatch: (msg) => {
     scoreBug.render(bugModel(msg, match));
+    updateBanner(msg, match);
     match = msg;
+    renderTags(msg.phase);
     trackHintPhase(msg.phase);
     renderServePrompt();
     renderBoards();
     onMatchEvent(msg);
-    maybeFlash();
     if (import.meta.env.DEV && devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
@@ -451,6 +461,8 @@ if (import.meta.env.DEV) {
   // ?quality=high|low pins the renderer quality (the shoot tool measures each level).
   const quality = q.get("quality");
   if (quality === "high" || quality === "low") scene.forceQuality(quality);
+  const forced = q.get("banner");
+  if (forced !== null) devBanner = devBannerItem(forced);
   const auto = q.get("join");
   if (auto !== null) {
     devBots = Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0));
@@ -651,6 +663,7 @@ scene.start((dt) => {
     }
   }
   updateReactions(framePos);
+  tickBanner();
 });
 
 // ── Dev auto-serve (?autoserve=1) ────────────────────────────────────────────
@@ -754,4 +767,19 @@ function removeLabel(slot: Slot): void {
     el.remove();
     tags.delete(slot);
   }
+}
+
+// ── Dev Banner (?banner=<kind>) ──────────────────────────────────────────────
+
+/** A sample Banner for a kind ("golden", "game", "set", "fault", "let", "start", "reset") or its title. */
+function devBannerItem(raw: string): BannerItem | null {
+  const k = raw.toLowerCase().replace(/[\s_-]+/g, "");
+  if (k === "golden" || k === "puntodeoro") return { copy: goldenPointBanner(5, 4), durationMs: Infinity };
+  const kinds = { game: "juego", set: "setypartido", fault: "falta", let: "let", start: "partido", reset: "reinicio" } as const;
+  for (const [kind, title] of Object.entries(kinds) as [keyof typeof kinds, string][]) {
+    if (k !== kind && k !== title) continue;
+    const copy = bannerFor(kind, kind === "game" || kind === "set" ? "A" : null, 5, 4, kind === "fault" ? "Into the net" : null);
+    return copy ? { copy, durationMs: Infinity } : null;
+  }
+  return null;
 }
