@@ -103,6 +103,7 @@ describe("server input queue", () => {
     expect(a1.inputQueue.length).toBeLessThanOrEqual(INPUT_SURPLUS_KEEP + 1);
     // The newest inputs survive: ack is the last one applied, the rest are still queued in order.
     expect(a1.ack).toBe(9 - a1.inputQueue.length);
+    expect(a1.inputQueue.at(-1)?.seq ?? a1.ack).toBe(9); // the newest input survives the drop
     expect(a1.inputQueue.map((m) => m.seq)).toEqual(
       Array.from({ length: a1.inputQueue.length }, (_, i) => a1.ack! + 1 + i),
     );

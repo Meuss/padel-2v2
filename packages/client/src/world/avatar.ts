@@ -14,24 +14,25 @@ import { PALETTE } from "./palette.js";
 
 export type Locomotion = "idle" | "ready" | "jog" | "sprint";
 
-/** Ground speeds (m/s) where standing turns into a jog, and a jog into a sprint. */
-const LOCO_THRESHOLDS = [0.35, 4.2] as const;
+/** Ground speed (m/s) where standing turns into a jog. */
+const JOG_SPEED = 0.35;
+/** Ground speed (m/s) where a jog turns into a sprint. */
+const SPRINT_SPEED = 4.2;
 /** A threshold must be passed by this much (m/s) to leave the current clip, so noise can't flicker it. */
 const LOCO_HYSTERESIS = 0.1;
-const LOCO_RANK: Record<Locomotion, number> = { idle: 0, ready: 0, jog: 1, sprint: 2 };
 
 /**
  * Pick the locomotion clip from ground speed (m/s), whether the ball is on our side,
  * and the clip playing now (hysteresis: ±0.1 m/s around each threshold). Pure.
  */
 export function pickLocomotion(speed: number, ballOnOurSide: boolean, prev: Locomotion): Locomotion {
-  const prevRank = LOCO_RANK[prev];
-  let rank = 0;
-  LOCO_THRESHOLDS.forEach((t, i) => {
-    if (speed >= (prevRank > i ? t - LOCO_HYSTERESIS : t + LOCO_HYSTERESIS)) rank = i + 1;
-  });
-  if (rank === 0) return ballOnOurSide ? "ready" : "idle";
-  return rank === 1 ? "jog" : "sprint";
+  // Each threshold sits 0.1 m/s lower when we are already above it, higher when below.
+  const moving = prev === "jog" || prev === "sprint";
+  const sprintAt = prev === "sprint" ? SPRINT_SPEED - LOCO_HYSTERESIS : SPRINT_SPEED + LOCO_HYSTERESIS;
+  const jogAt = moving ? JOG_SPEED - LOCO_HYSTERESIS : JOG_SPEED + LOCO_HYSTERESIS;
+  if (speed >= sprintAt) return "sprint";
+  if (speed >= jogAt) return "jog";
+  return ballOnOurSide ? "ready" : "idle";
 }
 
 /** Nickname as printed on the shirt: uppercase, at most 10 characters including the ellipsis. Pure. */
@@ -410,7 +411,9 @@ export class Avatar {
   private name = "";
   private disposed = false;
 
-  private last: { x: number; z: number } | null = null;
+  private hasLast = false;
+  private lastX = 0;
+  private lastZ = 0;
   private speed = 0;
   private ballOnOurSide = false;
   private loco: Locomotion = "idle";
@@ -420,7 +423,7 @@ export class Avatar {
    * fadeIn/fadeOut restart from 0/1, which pops when a crossfade is interrupted.
    */
   private baseTarget: THREE.AnimationAction | null = null;
-  private baseActions = new Set<THREE.AnimationAction>();
+  private baseActions: THREE.AnimationAction[] = [];
   private swingAction: THREE.AnimationAction | null = null;
   private swingElapsed = 0;
   private danceAction: THREE.AnimationAction | null = null;
@@ -438,15 +441,17 @@ export class Avatar {
   }
 
   setPose(x: number, y: number, z: number, yaw: number, dtSec: number): void {
-    const moved = this.last ? Math.hypot(x - this.last.x, z - this.last.z) : 0;
+    const moved = this.hasLast ? Math.hypot(x - this.lastX, z - this.lastZ) : 0;
     if (moved > TELEPORT_M) {
       this.speed = 0; // a teleport (ends swap, reconnect) is not a jog
-    } else if (this.last && dtSec > 0) {
+    } else if (this.hasLast && dtSec > 0) {
       // Smoothed, and clamped so a large frame gap is not a sprint.
       const inst = Math.min(10, moved / dtSec);
       this.speed += (inst - this.speed) * Math.min(1, dtSec * 12);
     }
-    this.last = { x, z };
+    this.hasLast = true;
+    this.lastX = x;
+    this.lastZ = z;
     this.root.position.set(x, y, z);
     this.root.rotation.y = yaw;
   }
@@ -540,7 +545,7 @@ export class Avatar {
       this.mixer.uncacheRoot(this.body);
     }
     this.mixer = null;
-    this.baseActions.clear();
+    this.baseActions.length = 0;
     this.baseTarget = null;
     for (const m of this.kitMaterials) m.dispose();
     for (const s of this.skeletons) s.dispose();
@@ -611,13 +616,13 @@ export class Avatar {
   /** Make `action` the base-layer target. One not already running starts from its first frame. */
   private setBase(action: THREE.AnimationAction | null): void {
     if (!action || action === this.baseTarget) return;
-    if (!this.baseActions.has(action)) {
+    if (!this.baseActions.includes(action)) {
       action.reset();
       action.timeScale = 1;
       // The first clip shows at once; later ones blend up from nothing.
       action.setEffectiveWeight(this.baseTarget ? 0 : 1);
       action.play();
-      this.baseActions.add(action);
+      this.baseActions.push(action);
     }
     this.baseTarget = action;
   }
@@ -626,12 +631,14 @@ export class Avatar {
   private blendBase(dtSec: number): void {
     const step = dtSec / CROSSFADE_S;
     let others = 0;
-    for (const action of this.baseActions) {
+    // Backwards, so a stopped action can be spliced out without skipping the next one.
+    for (let i = this.baseActions.length - 1; i >= 0; i--) {
+      const action = this.baseActions[i]!;
       if (action === this.baseTarget) continue;
       const w = Math.max(0, action.weight - step);
       if (w === 0) {
         action.stop();
-        this.baseActions.delete(action);
+        this.baseActions.splice(i, 1);
       } else {
         action.setEffectiveWeight(w);
         others += w;
