@@ -136,9 +136,29 @@
       #resetbtn:hover {
         background: rgba(60, 75, 115, 0.95);
       }
+      #mutebtn {
+        position: fixed;
+        top: 52px;
+        right: 12px;
+        width: 38px;
+        height: 32px;
+        padding: 0;
+        background: rgba(40, 50, 80, 0.85);
+        border: 1px solid rgba(120, 160, 255, 0.3);
+        border-radius: 10px;
+        color: #cfe0ff;
+        font-size: 15px;
+        line-height: 30px;
+        cursor: pointer;
+        user-select: none;
+        backdrop-filter: blur(6px);
+      }
+      #mutebtn:hover {
+        background: rgba(60, 75, 115, 0.95);
+      }
       #votepanel {
         position: fixed;
-        top: 60px;
+        top: 92px;
         right: 12px;
         width: 240px;
         padding: 12px 14px;
@@ -413,6 +433,7 @@
     <div id="resetbtn" title="Propose resetting the set (all players must accept)">
       ↺ Reset set
     </div>
+    <button id="mutebtn" type="button" title="Sound on (M to mute)" aria-pressed="false">🔊</button>
     <div id="votepanel"></div>
     <div id="nickname">
       <div class="card">
@@ -441,7 +462,7 @@
     <div id="hint">
       <strong>WASD</strong> move · point the <strong>mouse</strong> where to hit ·
       <strong>click</strong> Drive · <strong>right-click</strong> Lob · <strong>Space</strong> to toss the serve ·
-      <strong>E</strong> react
+      <strong>E</strong> react · <strong>M</strong> mute
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

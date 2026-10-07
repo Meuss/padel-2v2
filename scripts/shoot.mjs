@@ -1,5 +1,7 @@
 // Headless screenshot + render stats tool.
 // Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--autoserve] [--width n --height n] [--url u] [--quality high|low|auto]
+// Each page is clicked once before the wait, to unlock audio (browsers need a gesture);
+// stats.json then includes `audio`, the dev-only count of sounds played by type.
 // --autoserve makes the player page serve by itself (toss, then a Drive at the apex), so bots rally.
 // --quality pins the renderer level (default high): SwiftShader is far too slow for the
 // automatic fallback, which would otherwise always drop to "low" mid-shot. "auto" pins
@@ -41,6 +43,8 @@ async function shoot(browser, path, file, expectTags) {
   } catch {
     throw new Error(`Timed out waiting for scene and ${expectTags} nametags at ${path}`);
   }
+  // A real (trusted) click: the page unlocks its AudioContext on the first pointerdown.
+  await page.mouse.click(Math.round(width / 2), Math.round(height / 2));
   await new Promise((r) => setTimeout(r, wait));
   const fps = await page.evaluate(
     () =>
@@ -56,8 +60,9 @@ async function shoot(browser, path, file, expectTags) {
       }),
   );
   const stats = await page.evaluate(() => window.__padelScene.stats());
+  const audio = await page.evaluate(() => (window.__padelAudioStats ? { ...window.__padelAudioStats } : undefined));
   await page.screenshot({ path: join(o.out, file) });
-  return { ...stats, fps };
+  return { ...stats, fps, ...(audio ? { audio } : {}) };
 }
 
 let browser;

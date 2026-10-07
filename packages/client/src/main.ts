@@ -22,6 +22,8 @@ import {
 import { Input } from "./input.js";
 import { InterpBuffer } from "./interp.js";
 import { EVENT_STALE_MS, EventQueue } from "./events.js";
+import { AudioEngine } from "./audio/engine.js";
+import { crowdLevel, crowdReaction, screenPan, shouldPlay } from "./audio/voices.js";
 import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
@@ -47,6 +49,7 @@ const loadingTitle = document.getElementById("loading-title")!;
 const loadingHint = document.getElementById("loading-hint")!;
 const reactbar = document.getElementById("reactbar")!;
 const reactionsEl = document.getElementById("reactions")!;
+const mutebtn = document.getElementById("mutebtn")!;
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -56,6 +59,10 @@ const interp = new InterpBuffer();
 /** Snapshot events, held until the rendered ball reaches them. */
 const events = new EventQueue();
 const seenSlots = new Set<string>();
+const audio = new AudioEngine();
+if (import.meta.env.DEV) (window as unknown as { __padelAudioStats: AudioEngine["stats"] }).__padelAudioStats = audio.stats;
+/** Shots in the current rally: the crowd grows louder as it goes on. */
+let rallyShots = 0;
 
 let input: Input | null = null;
 let role: Role = "spectator";
@@ -162,14 +169,22 @@ function renderBoards(): void {
   });
 }
 
-/** Cheer (and let the winners celebrate) once per new point/game/set event. */
+/** Cheer (and let the winners celebrate), or "ooh" at a Fault, once per new match event. */
 function maybeCheer(event: string | null): void {
   if (event === lastCheered) return;
   lastCheered = event;
-  // "Set reset" is a vote, not a win: only points, games and "Set & Match" cheer.
-  if (event && /^(Point |Game |Set & Match)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
-  const winner = event && /^(Point |Game |Set & Match)/.test(event) ? teamFromEvent(event) : null;
+  const reaction = crowdReaction(event);
+  if (reaction?.kind === "ooh") audio.ooh();
+  if (reaction?.kind !== "cheer") return;
+  scene.cheer(reaction.intensity);
+  audio.cheer(reaction.intensity);
+  const winner = teamFromEvent(event);
   if (winner) scene.celebrate(winner);
+}
+
+function setRallyShots(n: number): void {
+  rallyShots = n;
+  audio.crowd(crowdLevel(n));
 }
 
 function renderServing(): void {
@@ -344,6 +359,7 @@ const net = new Net({
     renderScoreboard();
     renderBoards();
     maybeCheer(msg.event);
+    if (msg.phase === "serve" && rallyShots !== 0) setRallyShots(0);
     maybeFlash();
     if (import.meta.env.DEV && devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
@@ -403,6 +419,41 @@ nickInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") play();
 });
 resetbtn.addEventListener("click", () => net.send({ t: "votereset" }));
+
+// ── Sound: unlocked by the first gesture, M or the HUD button toggles mute ───
+
+const MUTE_KEY = "mpc-muted";
+
+function renderMute(): void {
+  mutebtn.textContent = audio.muted ? "🔇" : "🔊";
+  mutebtn.title = audio.muted ? "Sound off (M to unmute)" : "Sound on (M to mute)";
+  mutebtn.setAttribute("aria-pressed", String(audio.muted));
+}
+
+function toggleMute(): void {
+  audio.setMuted(!audio.muted);
+  try {
+    localStorage.setItem(MUTE_KEY, audio.muted ? "1" : "0");
+  } catch {
+    // storage blocked (private mode): the choice lasts for this page only
+  }
+  renderMute();
+}
+
+try {
+  audio.setMuted(localStorage.getItem(MUTE_KEY) === "1");
+} catch {
+  // storage blocked: start unmuted
+}
+renderMute();
+// Browsers only allow audio after a user gesture; every gesture also resumes a suspended context.
+for (const ev of ["pointerdown", "keydown"] as const) {
+  window.addEventListener(ev, () => audio.unlock(), { capture: true });
+}
+mutebtn.addEventListener("click", () => {
+  toggleMute();
+  mutebtn.blur(); // keep Space for the serve toss
+});
 showNickname();
 
 // Dev-only: ?join=<name>&bots=<n> skips the nickname card (used by `pnpm shoot`).
@@ -450,6 +501,7 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
   else if (e.code === "KeyN" && role === "player") net.send({ t: "clearbots" });
+  else if (e.code === "KeyM" && !(e.target instanceof HTMLInputElement)) toggleMute();
   else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
     reactbar.classList.toggle("open");
   }
@@ -506,23 +558,35 @@ function updateReactions(framePos: Map<string, { x: number; z: number }>): void 
   }
 }
 
+/** Stereo pan for a world position, from where it is on screen. */
+function panAt(pos: { x: number; y: number; z: number }): number {
+  return screenPan(scene.projectToScreen(pos.x, pos.y, pos.z).x, scene.domElement.clientWidth);
+}
+
 /**
  * One snapshot's shots and contacts, now that the rendered ball has reached them:
- * avatar swings, then hit feedback. Our own swing already played on the click,
- * unless the server made it a Smash.
+ * avatar swings, hit feedback, then sound. Our own swing already played on the click,
+ * unless the server made it a Smash. The queue already dropped events older than
+ * EVENT_STALE_MS; sound is stricter, since a late sound is heard as lag.
  */
 function playEvents(
-  _serverTime: number,
+  serverTime: number,
   shots: readonly ShotEvent[],
   contacts: readonly ContactEvent[],
   lateMs: number,
 ): void {
-  if (lateMs > EVENT_STALE_MS) return;
   for (const shot of shots) {
     if (shot.slot === selfSlot && shot.kind !== "smash") continue;
     scene.triggerSwing(shot.slot, shot.kind);
   }
   scene.onEvents(shots, contacts);
+  if (shots.length > 0) setRallyShots(rallyShots + shots.length);
+  if (!shouldPlay(serverTime, serverTime + lateMs)) {
+    audio.skipLate(shots.length + contacts.length);
+    return;
+  }
+  for (const shot of shots) audio.shot(shot.kind, shot.timing, panAt(shot.pos));
+  for (const c of contacts) audio.contact(c.surface, c.speed, panAt(c.pos));
 }
 
 // ── Render / input loop ──────────────────────────────────────────────────────
@@ -566,7 +630,7 @@ scene.start((dt) => {
   }
 
   interp.update(dt * 1000);
-  events.drain(interp.renderTime, playEvents);
+  events.drain(interp.renderTime, playEvents, EVENT_STALE_MS);
   const s = interp.sample();
   const framePos = new Map<string, { x: number; z: number }>();
   if (s) {

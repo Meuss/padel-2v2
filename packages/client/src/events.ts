@@ -15,11 +15,16 @@ export type EventHandler = (
 ) => void;
 
 /**
- * Events firing later than this are dropped by the caller: after a hidden tab the frame
- * loop jumps ahead, and replaying seconds of effects in one frame would be a burst of noise.
- * Generous, because headless rendering (the shoot tool) runs at a few frames per second.
+ * The drain limit for visual feedback: after a hidden tab the frame loop jumps ahead, and
+ * replaying seconds of effects in one frame would be a burst of noise. Generous, because
+ * headless rendering (the shoot tool) runs at a few frames per second.
  */
 export const EVENT_STALE_MS = 1000;
+
+/** True when an event at `serverTime` fires more than `maxLateMs` after it, at `renderTime`. */
+export function isStale(serverTime: number, renderTime: number, maxLateMs: number): boolean {
+  return renderTime - serverTime > maxLateMs;
+}
 /** Never hold more than this many snapshots' worth (a hidden tab keeps receiving them). */
 const MAX_PENDING = 256;
 
@@ -48,12 +53,17 @@ export class EventQueue {
     if (this.pending.length > MAX_PENDING) this.pending.shift();
   }
 
-  /** Hand every event due at `renderTime` to `handler`, oldest first, and forget it. */
-  drain(renderTime: number, handler: EventHandler): void {
+  /**
+   * Hand every event due at `renderTime` to `handler`, oldest first, and forget it.
+   * Events more than `maxLateMs` late are forgotten without being handled.
+   */
+  drain(renderTime: number, handler: EventHandler, maxLateMs = Infinity): void {
     let n = 0;
     while (n < this.pending.length && this.pending[n]!.serverTime <= renderTime) {
       const p = this.pending[n]!;
-      handler(p.serverTime, p.shots, p.contacts, renderTime - p.serverTime);
+      if (!isStale(p.serverTime, renderTime, maxLateMs)) {
+        handler(p.serverTime, p.shots, p.contacts, renderTime - p.serverTime);
+      }
       n++;
     }
     if (n > 0) this.pending.splice(0, n);

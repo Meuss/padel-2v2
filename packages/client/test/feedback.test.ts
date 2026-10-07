@@ -118,6 +118,28 @@ describe("EventQueue", () => {
     expect(got).toEqual({ shots: [s], contacts: [contact], lateMs: 30 });
   });
 
+  it("discards events later than maxLateMs without handling them", () => {
+    const q = new EventQueue();
+    q.schedule(1000, [shot("drive")], []);
+    q.schedule(1800, [], [contact]);
+    q.schedule(1950, [shot("lob")], []);
+    const fired: number[] = [];
+    q.drain(2000, (t) => fired.push(t), 200);
+    expect(fired).toEqual([1800, 1950]); // 1000 was 1000 ms late: dropped
+    expect(q.size).toBe(0);
+    q.schedule(3000, [shot("smash")], []);
+    q.drain(3200, (t) => fired.push(t), 200); // exactly at the limit still fires
+    expect(fired).toEqual([1800, 1950, 3000]);
+  });
+
+  it("has no lateness limit unless one is given", () => {
+    const q = new EventQueue();
+    q.schedule(0, [shot("drive")], []);
+    let n = 0;
+    q.drain(1e9, () => n++);
+    expect(n).toBe(1);
+  });
+
   it("ignores snapshots without events, and clear() drops everything pending", () => {
     const q = new EventQueue();
     q.schedule(100, [], []);
