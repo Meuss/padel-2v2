@@ -13,6 +13,7 @@ import {
   type ContactEvent,
   type InputMsg,
   type MatchMsg,
+  type MatchPhase,
   type Role,
   type ShotEvent,
   type Slot,
@@ -120,13 +121,26 @@ function renderWatching(spectators: number): void {
 const HINT_MS = 12_000;
 let hintTimer: number | undefined;
 let hintDone = false;
+/** The match phase last seen while the hint is up: a serve → rally step is the first serve. */
+let hintPhase: MatchPhase | null = null;
 
-/** Show the controls hint to a new player; it fades for good after the first serve or HINT_MS. */
+/**
+ * Show the controls hint to a new player; it fades for good after HINT_MS, or sooner once
+ * they watch a serve go in. Joining mid-rally does not count, so a reconnect still gets a showing.
+ */
 function showHint(): void {
   if (hintDone) return;
+  hintPhase = null;
   hint.classList.add("show");
   window.clearTimeout(hintTimer);
   hintTimer = window.setTimeout(fadeHint, HINT_MS);
+}
+
+/** On each match update: fade the hint on a serve → rally transition seen since it appeared. */
+function trackHintPhase(phase: MatchPhase): void {
+  if (hintDone || !hint.classList.contains("show")) return;
+  if (hintPhase === "serve" && phase === "rally") fadeHint();
+  hintPhase = phase;
 }
 
 function fadeHint(): void {
@@ -338,6 +352,7 @@ const net = new Net({
       input = null;
       selfSlot = null;
       scene.setSpectatorCamera();
+      window.clearTimeout(hintTimer); // a seat lost mid-showing does not use up the hint
       hint.classList.remove("show");
       resetbtn.classList.remove("show");
     }
@@ -358,7 +373,7 @@ const net = new Net({
   },
   onMatch: (msg) => {
     match = msg;
-    if (msg.phase === "rally" && hint.classList.contains("show")) fadeHint();
+    trackHintPhase(msg.phase);
     renderScoreboard();
     renderBoards();
     onMatchEvent(msg);
