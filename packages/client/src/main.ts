@@ -19,6 +19,7 @@ import {
   type Slot,
   type Team,
   type Vec2,
+  type VoteMsg,
 } from "@padel/shared";
 import { Input } from "./input.js";
 import { InterpBuffer } from "./interp.js";
@@ -32,6 +33,7 @@ import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
+import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import {
   clipTime,
   isNotable,
@@ -70,7 +72,7 @@ const reactbar = document.getElementById("reactbar")!;
 const reactionsEl = document.getElementById("reactions")!;
 const mutebtn = document.getElementById("mutebtn")!;
 const replayTag = document.getElementById("replaytag")!;
-const muteIcon = mutebtn.querySelector("span")!;
+const finalCard = new FinalCard(document.getElementById("finalcard")!, { accept: acceptVote, decline: declineVote });
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -106,6 +108,10 @@ let devAutoServe = false;
 let devBanner: BannerItem | null = null;
 /** Dev only (?forceReplay=1): every point is notable, so `pnpm shoot` can catch a replay. */
 let devForceReplay = false;
+/** Dev only (?finalCard=1): the Final card with synthetic stats and an open Rematch vote. */
+let devFinal = false;
+/** Dev only (?vote=reset|rematch): a synthetic open vote, for the vote panel. */
+let devVote: VoteMsg["kind"] | null = null;
 
 let match: MatchMsg | null = null;
 
@@ -267,32 +273,149 @@ function renderTags(phase: MatchPhase | null): void {
   labels.classList.toggle("rally", phase === "rally");
 }
 
-function renderVote(active: boolean, initiator = "", accepted = 0, needed = 0): void {
-  if (!(active && role === "player")) {
-    votepanel.style.display = "none";
+/** The open vote (reset or rematch), from the server. */
+let vote: VoteMsg | null = null;
+/** We accepted the open vote (or started it): the Accept button settles. */
+let acceptedVote = false;
+/** What the vote panel shows now, or null while hidden. */
+let votePanelKey: string | null = null;
+
+function onVote(msg: VoteMsg): void {
+  // A closed vote, or a new kind (the Rematch replaces a reset vote): our answer is spent.
+  if (!msg.active || msg.kind !== vote?.kind) acceptedVote = false;
+  vote = msg;
+  renderVote();
+}
+
+/** Accept the open vote, or with none open, start one (a reset; after the match, a rematch). */
+function acceptVote(): void {
+  net.send({ t: "votereset" });
+  acceptedVote = true;
+  renderVote();
+}
+
+function declineVote(): void {
+  net.send({ t: "votedecline" });
+}
+
+/** The vote as shown: the server's, or a dev sample (?vote=, ?finalCard=1). */
+function shownVote(): VoteMsg | null {
+  if (import.meta.env.DEV && (devVote || devFinal) && !vote?.active) {
+    const kind = devVote ?? "rematch";
+    const initiator = kind === "rematch" ? "MEUSS PADEL CLUB" : nickInput.value || "Player";
+    return { t: "vote", active: true, kind, initiator, accepted: 1, needed: 2 };
+  }
+  return vote;
+}
+
+/**
+ * The vote in its two places: the Final card's footer once the match is over, else the
+ * lower-third panel (Players only, between points: the rally screen stays clean).
+ */
+function renderVote(): void {
+  const v = shownVote();
+  const active = v?.active ?? false;
+  finalCard.setVote({
+    active,
+    accepted: v?.accepted ?? 0,
+    needed: v?.needed ?? 0,
+    canVote: role === "player",
+    acceptedByMe: acceptedVote,
+  });
+  const finalPhase = finalCard.showing || finalDueAt !== null || match?.phase === "over";
+  if (!v || !active || role !== "player" || finalPhase || match?.phase === "rally") {
+    votepanel.classList.remove("show");
+    votePanelKey = null;
     return;
   }
-  // Built with DOM nodes: the initiator's nickname is user input.
-  const who = document.createElement("strong");
-  who.textContent = initiator;
-  const line = document.createElement("div");
-  line.append(who, " wants to reset the set.");
-  const count = document.createElement("div");
-  count.style.cssText = "opacity:.8;margin-top:4px";
-  count.textContent = `${accepted}/${needed} players accepted`;
+  // Rebuilt only when it changes, so a focused button keeps its focus across match updates.
+  const key = `${v.kind}|${v.initiator}|${v.accepted}/${v.needed}|${acceptedVote}`;
+  if (key === votePanelKey) return;
+  votePanelKey = key;
+  const rule = document.createElement("div");
+  rule.className = "vt-rule";
+  const title = document.createElement("div");
+  title.className = "vt-title";
+  title.textContent = v.kind === "rematch" ? "REMATCH?" : "RESET THE SET?";
+  // The initiator's nickname is user input: textContent only.
+  const who = document.createElement("span");
+  who.className = "vt-who";
+  who.textContent = v.initiator;
+  const n = document.createElement("b");
+  n.textContent = `${v.accepted}/${v.needed}`;
+  const count = document.createElement("span");
+  count.className = "vt-count";
+  count.append(n, " accepted");
+  const sub = document.createElement("div");
+  sub.className = "vt-sub";
+  sub.append(who, count);
   const accept = document.createElement("button");
-  accept.className = "accept";
-  accept.textContent = "Accept";
-  accept.addEventListener("click", () => net.send({ t: "votereset" }));
+  accept.type = "button";
+  accept.className = "primary-btn";
+  accept.textContent = acceptedVote ? "Accepted" : "Accept";
+  accept.disabled = acceptedVote;
+  accept.addEventListener("click", acceptVote);
   const decline = document.createElement("button");
-  decline.className = "decline";
+  decline.type = "button";
+  decline.className = "ghost-btn";
   decline.textContent = "Decline";
-  decline.addEventListener("click", () => net.send({ t: "votedecline" }));
+  decline.addEventListener("click", declineVote);
+  for (const b of [accept, decline]) {
+    // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
+    b.addEventListener("click", (e) => {
+      if (e.detail > 0) b.blur();
+    });
+  }
   const actions = document.createElement("div");
-  actions.className = "actions";
+  actions.className = "vt-actions";
   actions.append(accept, decline);
-  votepanel.replaceChildren(line, count, actions);
-  votepanel.style.display = "block";
+  votepanel.replaceChildren(rule, title, sub, actions);
+  votepanel.classList.add("show");
+}
+
+// ── Final card ───────────────────────────────────────────────────────────────
+
+/** The Final card comes this long after the Set Banner (or when the match-point replay ends). */
+const FINAL_DELAY_MS = 1200;
+/** When the Final card is due (local clock), or null when none is waiting. */
+let finalDueAt: number | null = null;
+
+/** The Final card for the current match state (a dev sample with ?finalCard=1), or null. */
+function currentFinal(): FinalModel | null {
+  if (import.meta.env.DEV && devFinal) return finalModel(devFinalMatch(), names);
+  return match ? finalModel(match, names) : null;
+}
+
+/**
+ * After each match update: a finished match makes the Final card due FINAL_DELAY_MS later; a new
+ * match (the Rematch, a reset) takes it off, and the PARTIDO Banner opens it.
+ */
+function updateFinal(): void {
+  const model = currentFinal();
+  if (model) {
+    if (finalCard.showing) finalCard.show(model);
+    else if (finalDueAt === null) finalDueAt = performance.now() + FINAL_DELAY_MS;
+    return;
+  }
+  finalDueAt = null;
+  if (finalCard.showing) {
+    finalCard.hide();
+    finalCardShowing = false;
+    document.body.classList.remove("final-up");
+  }
+}
+
+/** Once per frame: show the due Final card once the director is back to live; it replaces the Set Banner. */
+function tickFinal(now: number): void {
+  if (finalDueAt === null || now < finalDueAt || director.mode !== "live") return;
+  finalDueAt = null;
+  const model = currentFinal();
+  if (!model) return;
+  finalCard.show(model);
+  finalCardShowing = true;
+  bannerQueue.clear();
+  document.body.classList.add("final-up");
+  renderVote();
 }
 
 function showLoading(status: ConnStatus): void {
@@ -321,7 +444,7 @@ const replayPlayer = new ReplayPlayer(recorder);
 let director: DirectorState = { mode: "live" };
 /** Whether the replay view (Broadcast cam, recorded play, REPLAY tag) is on screen. */
 let replayShown = false;
-/** True while the Final card is up: no replay starts over it. (The Final card is not built yet.) */
+/** True while the Final card is up: no replay starts over it. */
 let finalCardShowing = false;
 const TICK: DirectorEvent = { t: "tick" };
 const SKIP: DirectorEvent = { t: "skip" };
@@ -416,6 +539,7 @@ const net = new Net({
       hint.classList.remove("show");
       resetbtn.classList.remove("show");
     }
+    renderVote();
     if (msg.role === "player" && devBots > 0) {
       for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
       devBots = 0;
@@ -430,12 +554,15 @@ const net = new Net({
     }
     renderServePrompt();
     renderBoards();
+    if (finalCard.showing) updateFinal();
   },
   onMatch: (msg) => {
     scoreBug.render(bugModel(msg, match));
     updateBanner(msg, match);
     updateDirector(msg, match);
     match = msg;
+    updateFinal();
+    renderVote();
     renderTags(msg.phase);
     trackHintPhase(msg.phase);
     renderServePrompt();
@@ -446,7 +573,7 @@ const net = new Net({
     if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
     lastHighlightKey = hk;
   },
-  onVote: (msg) => renderVote(msg.active, msg.initiator, msg.accepted, msg.needed),
+  onVote,
   onKicked: (reason) => {
     showNickname(reason);
   },
@@ -482,7 +609,8 @@ function showNickname(message = ""): void {
   nickMsg.textContent = message;
   nickname.style.display = "flex";
   resetbtn.classList.remove("show");
-  votepanel.style.display = "none";
+  vote = null;
+  renderVote();
   nickInput.focus();
 }
 
@@ -501,7 +629,7 @@ nickInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") play();
 });
 resetbtn.addEventListener("click", (e) => {
-  net.send({ t: "votereset" });
+  acceptVote();
   // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
   if (e.detail > 0) resetbtn.blur();
 });
@@ -511,8 +639,7 @@ resetbtn.addEventListener("click", (e) => {
 const MUTE_KEY = "mpc-muted";
 
 function renderMute(): void {
-  muteIcon.textContent = audio.muted ? "🔇" : "🔊";
-  // The toggle is labelled "Sound": pressed means sound is on.
+  // The toggle is labelled "Sound": pressed means sound is on (the icon follows, in CSS).
   mutebtn.setAttribute("aria-pressed", String(!audio.muted));
 }
 
@@ -550,6 +677,9 @@ if (import.meta.env.DEV) {
   const quality = q.get("quality");
   if (quality === "high" || quality === "low") scene.forceQuality(quality);
   devForceReplay = q.get("forceReplay") === "1";
+  devFinal = q.get("finalCard") === "1";
+  const voteKind = q.get("vote");
+  if (voteKind === "reset" || voteKind === "rematch") devVote = voteKind;
   const forced = q.get("banner");
   if (forced !== null) devBanner = devBannerItem(forced);
   const auto = q.get("join");
@@ -559,6 +689,7 @@ if (import.meta.env.DEV) {
     nickInput.value = auto;
     play();
   }
+  if (q.get("tray") === "1") setTray(true);
 }
 
 // ── Activity pings (throttled) so the server can idle-kick ───────────────────
@@ -575,16 +706,28 @@ for (const ev of ["mousemove", "keydown", "mousedown"] as const) {
   window.addEventListener(ev, ping);
 }
 
-// Reaction picker: build the bar, toggle with E (players only).
+// Emote tray: the reactions in a strip, toggled with E (players only).
+function setTray(open: boolean): void {
+  reactbar.classList.toggle("open", open);
+  document.body.classList.toggle("tray-open", open);
+}
+
 for (const id of REACTIONS) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "rb-item";
+  item.title = id;
+  item.setAttribute("aria-label", id);
   const img = document.createElement("img");
   img.src = `${BASE}reactions/${id}.png`;
-  img.title = id;
-  img.addEventListener("click", () => {
+  img.alt = "";
+  item.append(img);
+  item.addEventListener("click", (e) => {
     net.send({ t: "react", id });
-    reactbar.classList.remove("open");
+    setTray(false);
+    if (e.detail > 0) item.blur();
   });
-  reactbar.appendChild(img);
+  reactbar.append(item);
 }
 
 window.addEventListener("keydown", (e) => {
@@ -595,7 +738,7 @@ window.addEventListener("keydown", (e) => {
     toggleMute();
   }
   else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
-    reactbar.classList.toggle("open");
+    setTray(!reactbar.classList.contains("open"));
   }
   // Enter skips the replay for everyone (Space stays the serve toss). A focused button keeps its Enter.
   else if (
@@ -803,6 +946,7 @@ scene.start((dt) => {
     }
   }
   updateReactions(framePos);
+  tickFinal(now);
   tickBanner();
 });
 
@@ -922,4 +1066,37 @@ function devBannerItem(raw: string): BannerItem | null {
     return copy ? { copy, durationMs: Infinity } : null;
   }
   return null;
+}
+
+// ── Dev Final card (?finalCard=1) ────────────────────────────────────────────
+
+/** A finished match with sample stats, won by our team (so a long nickname shows on the card). */
+function devFinalMatch(): MatchMsg {
+  const winner: Team = selfTeam ?? "A";
+  return {
+    t: "match",
+    phase: "over",
+    pointA: "0",
+    pointB: "0",
+    gamesA: winner === "A" ? 6 : 4,
+    gamesB: winner === "A" ? 4 : 6,
+    tiebreak: false,
+    sideA: -1,
+    serverSlot: null,
+    serveBox: null,
+    awaitingServe: false,
+    tossing: false,
+    event: "SET Y PARTIDO",
+    eventKind: "set",
+    eventTeam: winner,
+    reason: null,
+    highlight: null,
+    winner,
+    stats: {
+      A: { shots: 132, perfect: 51, smashes: 9, points: 31 },
+      B: { shots: 118, perfect: 34, smashes: 5, points: 24 },
+      longestRally: 17,
+      durationS: 642,
+    },
+  };
 }

@@ -60,32 +60,6 @@
           opacity: 1;
         }
       }
-      #reactbar {
-        position: fixed;
-        bottom: 96px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: none;
-        gap: 8px;
-        padding: 8px 10px;
-        background: rgba(8, 12, 28, 0.85);
-        border: 1px solid rgba(120, 160, 255, 0.3);
-        border-radius: 14px;
-        backdrop-filter: blur(6px);
-      }
-      #reactbar.open {
-        display: flex;
-      }
-      #reactbar img {
-        width: 52px;
-        height: 52px;
-        cursor: pointer;
-        border-radius: 10px;
-        transition: transform 0.1s ease;
-      }
-      #reactbar img:hover {
-        transform: scale(1.15);
-      }
     </style>
   </head>
   <body>
@@ -105,9 +79,16 @@
       <button id="resetbtn" class="ghost-btn" type="button" title="Propose resetting the set (all players must accept)">
         Reset set
       </button>
-      <button id="mutebtn" class="ghost-btn" type="button" title="Sound (M)" aria-label="Sound" aria-pressed="true"><span aria-hidden="true">🔊</span></button>
-      <div id="votepanel"></div>
+      <button id="mutebtn" class="ghost-btn" type="button" title="Sound (M)" aria-label="Sound" aria-pressed="true">
+        <svg class="mute-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path class="speaker" d="M3.5 9.25h3.75L12.5 5v14l-5.25-4.25H3.5z" />
+          <path class="waves" d="M15.75 9a4.25 4.25 0 0 1 0 6M18.5 6.25a8.25 8.25 0 0 1 0 11.5" />
+          <path class="slash" d="M3 3.5l18 17" />
+        </svg>
+      </button>
     </div>
+    <div id="votepanel" class="vote" role="region" aria-label="Vote"></div>
+    <div id="finalcard"></div>
     <div id="nickname">
       <div class="card">
         <h1>Meuss Padel Club</h1>

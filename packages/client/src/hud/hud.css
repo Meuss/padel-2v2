@@ -78,9 +78,50 @@
 .ghost-btn:active {
   background: var(--bug-navy-2);
 }
-.ghost-btn:focus-visible {
+.ghost-btn:focus-visible,
+.primary-btn:focus-visible {
   outline: 2px solid var(--bug-white);
   outline-offset: 2px;
+}
+.ghost-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ghost-btn:disabled:hover {
+  background: rgba(11, 16, 32, 0.35);
+  border-color: rgba(244, 247, 255, 0.3);
+}
+
+/** The one action a graphic asks for: navy with an optic outline, tinted on hover. */
+.primary-btn {
+  appearance: none;
+  padding: 0.45em 0.9em;
+  background: var(--bug-navy);
+  border: max(1.5px, 0.12vw) solid var(--optic);
+  border-radius: 2px;
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 160ms var(--ease-out);
+}
+.primary-btn:hover {
+  background: rgba(228, 242, 58, 0.16);
+}
+.primary-btn:active {
+  background: rgba(228, 242, 58, 0.26);
+}
+/* Accepted: the choice is made, the outline dims. */
+.primary-btn:disabled {
+  background: var(--bug-navy);
+  border-color: rgba(228, 242, 58, 0.4);
+  color: rgba(244, 247, 255, 0.7);
+  cursor: default;
 }
 
 /* ── Chrome: connection, watching, controls ───────────────────────────────── */
@@ -152,12 +193,24 @@
   display: inline-block;
 }
 
+/* A drawn speaker: waves while sound is on, a slash through it when muted. */
 #mutebtn {
-  min-width: 2.4em;
-  padding: 0.3em 0.5em;
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0.3em 0.55em;
+}
+.mute-icon {
+  width: clamp(16px, 1.25vw, 20px);
+  height: clamp(16px, 1.25vw, 20px);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#mutebtn[aria-pressed="true"] .slash,
+#mutebtn[aria-pressed="false"] .waves {
+  display: none;
 }
 
 /** One quiet line of controls, bottom-centre; fades for good after the first serve or 12 s. */
@@ -660,40 +713,404 @@ body.replaying #labels {
   border-bottom-color: var(--rojo);
 }
 
-/* ── V1 elements, kept working until Tasks 3–6 replace them ───────────────── */
+/* ── Emote tray: a navy strip of the 8 reactions, bottom-centre above the hint (E) ── */
 
-/* Lives in #topright, under the controls. */
+:root {
+  --tray-img: clamp(40px, 5.6vh, 72px);
+  /* Clear of the one-line hint under it. */
+  --tray-bottom: calc(var(--hud-inset) + 1.5 * var(--t-xs) + 8px);
+  --tray-h: calc(var(--tray-img) + 3.6vh);
+}
+#reactbar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--tray-bottom);
+  display: none;
+  gap: 0.5vh;
+  padding: 0.8vh;
+  background: var(--bug-navy);
+  border: 1px solid rgba(244, 247, 255, 0.24);
+  border-radius: 2px;
+  box-shadow: var(--hud-shadow);
+  translate: -50% 0;
+}
+#reactbar.open {
+  display: flex;
+  animation: tray-in 160ms var(--ease-out);
+}
+@keyframes tray-in {
+  from {
+    opacity: 0;
+    translate: -50% 6px;
+  }
+}
+.rb-item {
+  appearance: none;
+  display: block;
+  padding: 1vh 0.5vh;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    translate 140ms var(--ease-out),
+    background-color 140ms var(--ease-out);
+}
+.rb-item img {
+  display: block;
+  width: var(--tray-img);
+  height: var(--tray-img);
+}
+.rb-item:hover {
+  translate: 0 -2px;
+  background: var(--bug-navy-2);
+}
+.rb-item:focus-visible {
+  outline: 2px solid var(--bug-white);
+  outline-offset: -2px;
+}
+/* The serve prompt moves up over the open tray (and still fades for a Banner). */
+#serveprompt {
+  transition:
+    opacity 180ms var(--ease-out),
+    bottom 160ms var(--ease-out);
+}
+body.tray-open #serveprompt {
+  bottom: calc(var(--tray-bottom) + var(--tray-h) + 1.2vh);
+}
+
+/* ── Vote panel: a lower third, bottom-right, mirroring the score bug ─────── */
+
 #votepanel {
-  width: 240px;
-  padding: 12px 14px;
-  background: rgba(8, 12, 28, 0.92);
-  border: 1px solid rgba(120, 160, 255, 0.35);
-  border-radius: 12px;
-  color: #eaf1ff;
-  font-size: 13px;
+  position: fixed;
+  right: 4.9vw;
+  bottom: 4.6vh;
+  width: 22vw;
+  min-width: 300px;
+  display: none;
+  background: var(--bug-navy);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  line-height: 1;
+  box-shadow: var(--hud-shadow);
+  transition: opacity 180ms var(--ease-out);
+}
+#votepanel.show {
+  display: block;
+  animation: vt-in 220ms var(--ease-out);
+}
+@keyframes vt-in {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.vt-rule {
+  height: max(3px, 0.6vh);
+  background: var(--optic);
+}
+.vt-title {
+  padding: 1.3vh 1.1vw 1.1vh;
+  font-size: clamp(22px, 3.6vh, 52px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.vt-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  padding: 0.9vh 1.1vw 0.8vh;
+  border-top: 1px solid rgba(244, 247, 255, 0.26);
+  font-size: clamp(14px, 2.1vh, 30px);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.vt-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vt-count {
+  flex: none;
+  color: rgba(244, 247, 255, 0.72);
+}
+.vt-count b {
+  color: var(--bug-white);
+  font-weight: 700;
+}
+.vt-actions {
+  display: flex;
+  gap: 0.6vw;
+  padding: 0.4vh 1.1vw 1.4vh;
+}
+.vt-actions button {
+  flex: 1;
+  font-size: clamp(14px, 2vh, 28px);
+  padding: 0.6em 0.9em;
+}
+body.banner-up #votepanel,
+body.final-up #votepanel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Final card: centred, after the Set Banner; holds the Rematch vote ────── */
+
+#finalcard {
+  position: fixed;
+  left: 50%;
+  top: 48%;
+  width: 46vw;
+  translate: -50% -50%;
+  background: var(--bug-navy);
+  border: 1px solid rgba(244, 247, 255, 0.38);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  line-height: 1;
+  box-shadow: 0 12px 40px rgba(3, 6, 14, 0.55);
+  user-select: none;
+  /* Hidden: clipped away at the right edge, so the wipe runs left to right (as the Banner). */
+  clip-path: inset(0 100% 0 0);
+  visibility: hidden;
+}
+#finalcard.in {
+  clip-path: inset(0 0 0 0);
+  visibility: visible;
+  transition: clip-path 280ms var(--ease-out);
+}
+#finalcard.out {
+  clip-path: inset(0 0 0 100%);
+  visibility: hidden;
+  transition:
+    clip-path 200ms cubic-bezier(0.7, 0, 0.84, 0),
+    visibility 0s 200ms;
+}
+#finalcard[data-team="azul"] {
+  --fc-team: var(--azul);
+}
+#finalcard[data-team="rojo"] {
+  --fc-team: var(--rojo);
+}
+.fc-head {
+  display: grid;
+  place-items: center;
+  height: 4.6vh;
+  padding-top: 0.08em;
+  background: var(--bug-white);
+  color: var(--bug-ink);
+  font-size: 3.1vh;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.fc-top {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 1.2vh;
+  padding: 2.8vh 2vw 2.6vh;
+  background: linear-gradient(180deg, #172649 0%, var(--bug-navy) 100%);
+}
+/* The winner's colour down the left edge. */
+.fc-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0.6vw;
+  background: var(--fc-team);
+}
+.fc-winner {
+  color: var(--fc-team);
+  font-size: 6vh;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.fc-score {
+  display: flex;
+  align-items: center;
+  gap: 0.22em;
+  font-size: 13vh;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.fc-dash {
+  color: rgba(244, 247, 255, 0.5);
+  font-weight: 600;
+}
+.fc-names {
+  display: flex;
+  justify-content: center;
+  gap: 0.5em;
+  max-width: 100%;
+  color: rgba(244, 247, 255, 0.82);
+  font-size: 2.7vh;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.fc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-sep {
+  color: rgba(244, 247, 255, 0.45);
+}
+.fc-names[hidden] {
   display: none;
 }
-#votepanel .actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
+
+.fc-stats {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
-#votepanel button {
-  flex: 1;
-  padding: 7px;
-  border: none;
-  border-radius: 8px;
+.fc-stats th,
+.fc-stats td {
+  height: 4.6vh;
+  padding: 0.1em 1vw 0;
+  border-top: 1px solid rgba(244, 247, 255, 0.16);
+  text-align: center;
+}
+.fc-stats thead th {
+  height: 3.8vh;
+  background: var(--bug-navy-2);
+  border-top-color: rgba(244, 247, 255, 0.26);
+  font-size: 2.2vh;
   font-weight: 700;
-  cursor: pointer;
+  letter-spacing: 0.1em;
 }
-#votepanel .accept {
-  background: #1f9d57;
-  color: #fff;
+.fc-stats thead .fc-label {
+  width: 46%;
 }
-#votepanel .decline {
-  background: #b23b3b;
-  color: #fff;
+.fc-dot {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin: 0 0.45em 0.08em 0;
+  border-radius: 50%;
+  vertical-align: middle;
 }
+.fc-team.azul .fc-dot {
+  background: var(--azul);
+}
+.fc-team.rojo .fc-dot {
+  background: var(--rojo);
+}
+.fc-val {
+  font-size: 3.2vh;
+  font-weight: 700;
+}
+.fc-stats tbody .fc-label {
+  color: rgba(244, 247, 255, 0.74);
+  font-size: 2.2vh;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.fc-shared {
+  margin-left: 0.6em;
+  color: var(--bug-white);
+  font-size: 1.45em;
+  font-weight: 700;
+  vertical-align: -0.08em;
+}
+
+.fc-foot {
+  display: flex;
+  align-items: center;
+  gap: 1.4vw;
+  min-height: 7.6vh;
+  padding: 1.4vh 1.6vw 1.4vh 2vw;
+  background: var(--bug-navy-2);
+  border-top: max(2px, 0.3vh) solid var(--optic);
+}
+.fc-q {
+  font-size: 4vh;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.fc-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5vh;
+}
+.fc-count-n {
+  font-size: 3.2vh;
+  font-weight: 700;
+}
+.fc-count-label {
+  color: rgba(244, 247, 255, 0.72);
+  font-size: 2vh;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.fc-actions {
+  display: flex;
+  gap: 0.6vw;
+  margin-left: auto;
+}
+.fc-actions button {
+  font-size: clamp(14px, 2.2vh, 30px);
+  padding: 0.6em 1.3em;
+}
+.fc-wait {
+  margin-left: auto;
+  color: rgba(244, 247, 255, 0.78);
+  font-size: 2.3vh;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.fc-count[hidden],
+.fc-actions[hidden],
+.fc-wait[hidden] {
+  display: none;
+}
+
+/* While the Final card is up, the other graphics step aside. */
+body.final-up #scorebug,
+body.final-up #serveprompt,
+body.final-up #labels {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #finalcard,
+  #finalcard.in,
+  #finalcard.out {
+    clip-path: none;
+  }
+  #finalcard {
+    opacity: 0;
+  }
+  #finalcard.in {
+    opacity: 1;
+    transition: opacity 220ms linear;
+  }
+  #finalcard.out {
+    opacity: 0;
+    transition:
+      opacity 180ms linear,
+      visibility 0s 180ms;
+  }
+  #votepanel.show,
+  #reactbar.open {
+    animation: none;
+  }
+  .rb-item:hover {
+    translate: none;
+  }
+}
+
+/* ── V1 elements, kept working until Task 7 replaces them ─────────────────── */
 
 #nickname {
   position: fixed;

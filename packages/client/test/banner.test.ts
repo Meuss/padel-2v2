@@ -144,4 +144,15 @@ describe("bannerForMatch", () => {
     const m = msg({ event: "PUNTO — AZUL", eventKind: "point", eventTeam: "A", pointA: "40", pointB: "40", tiebreak: true });
     expect(bannerForMatch(m, rally)).toBeNull();
   });
+
+  it("opens the new match with PARTIDO when the Rematch passes after the Final card", () => {
+    const over = msg({ phase: "over", event: "SET Y PARTIDO", eventKind: "set", eventTeam: "A", winner: "A" });
+    const rematch = msg({ event: "REINICIO", eventKind: "reset" });
+    expect(bannerForMatch(rematch, over)).toEqual({
+      copy: { title: "PARTIDO", sub: "AZUL vs ROJO", tone: "neutral", team: null },
+      durationMs: 2200,
+    });
+    // A reset mid-match stays REINICIO.
+    expect(bannerForMatch(rematch, rally)?.copy.title).toBe("REINICIO");
+  });
 });
