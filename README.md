@@ -13,8 +13,8 @@ the look, how hits feel, the netcode and the match flow.
 
 | V1 | V2 |
 |---|---|
-| ![V1: the original game](docs/screenshots/v1.png) | *In progress. The real in-game screenshot arrives with the new arena.* |
-| The original game. | Pro-tour broadcast look, Drive / Lob / Smash with Timing, client-side prediction, instant replays, a final card and a rematch vote. |
+| ![V1: the original game](docs/screenshots/v1.png) | ![V2: the Pro Tour Broadcast arena](docs/screenshots/v2.png) |
+| The original game. | Pro-tour broadcast look, Drive / Lob / Smash with Timing, client-side prediction, instant replays, a final card and a rematch vote. V2 in progress: the arena and players are in; shots, sound and broadcast graphics come next. |
 
 V2 lands in stages. The live link runs whatever stage is currently deployed. The
 design target for V2 is in [docs/design/v2-comp-clean-feed.png](docs/design/v2-comp-clean-feed.png)

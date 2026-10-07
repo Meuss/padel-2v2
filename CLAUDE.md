@@ -1,4 +1,6 @@
-# Padel 2v2
+# Meuss Padel Club
+
+Formerly named "Padel 2v2" (the old name may still appear in git history, the repo name and deploy URLs).
 
 Browser 2v2 padel game. One global room: the first four connections play, everyone
 else spectates. The **server is authoritative**: it runs physics, scoring and bots;

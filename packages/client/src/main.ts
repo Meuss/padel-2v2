@@ -99,7 +99,7 @@ function renderHud(): void {
           ? "server waking up / reconnecting…"
           : "—";
   hud.innerHTML = `
-    <div>🎾 <strong>Padel 2v2</strong></div>
+    <div>🎾 <strong>Meuss Padel Club</strong></div>
     <div>status: <span class="${statusClass}">${statusLabel}</span></div>
     <div>you: <span class="role">${state.role}${
       state.slot ? ` (${state.slot})` : ""
