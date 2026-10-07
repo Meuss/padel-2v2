@@ -4,14 +4,18 @@
  * match state. Sends throttled activity pings so the server can idle-kick.
  */
 import {
+  COURT,
   PLAYER,
   REACTIONS,
+  SERVICE_LINE_DIST,
   sanitizeName,
+  tossApex,
   type InputMsg,
   type MatchMsg,
   type Role,
   type Slot,
   type Team,
+  type Vec2,
 } from "@padel/shared";
 import { Input } from "./input.js";
 import { InterpBuffer } from "./interp.js";
@@ -61,6 +65,8 @@ let carryServe = false;
 let selfYaw = 0;
 let outdated = false;
 let devBots = 0;
+/** Dev only (?autoserve=1): serve by itself so `pnpm shoot` can show rallies. */
+let devAutoServe = false;
 
 let match: MatchMsg | null = null;
 
@@ -333,6 +339,7 @@ const net = new Net({
     renderBoards();
     maybeCheer(msg.event);
     maybeFlash();
+    if (devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
     lastHighlightKey = hk;
@@ -355,6 +362,7 @@ const net = new Net({
   },
   onSnapshot: (msg) => {
     interp.add(msg);
+    lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
     const shots = msg.shots ?? [];
     for (const shot of shots) {
       // Our own swing already played on the click, unless the server made it a Smash.
@@ -406,6 +414,7 @@ if (import.meta.env.DEV) {
   const auto = q.get("join");
   if (auto !== null) {
     devBots = Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0));
+    devAutoServe = q.get("autoserve") === "1";
     nickInput.value = auto;
     play();
   }
@@ -510,7 +519,9 @@ scene.start((dt) => {
     carryShot = i.shot ?? carryShot;
     carryServe ||= i.serve;
     const aim =
-      ownPos !== null
+      devAutoServe && selfLocked() && ownPos !== null
+        ? serveAimAtBoxCentre(ownPos)
+        : ownPos !== null
         ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
         : { x: 0, z: selfTeam === "A" ? 1 : -1 };
     if (aim.x !== 0 || aim.z !== 0) selfYaw = Math.atan2(aim.x, aim.z);
@@ -568,6 +579,74 @@ scene.start((dt) => {
   }
   updateReactions(framePos);
 });
+
+// ── Dev auto-serve (?autoserve=1) ────────────────────────────────────────────
+// Timer-driven rather than per frame: headless SwiftShader renders at ~2 fps, slower than
+// the toss lasts, and its render clock drifts well behind the server's.
+
+const AUTOSERVE_DELAY_MS = 600;
+let autoServeState: "idle" | "tossing" | "striking" = "idle";
+let autoServeTimer: number | undefined;
+/** The newest snapshot's server time and when it arrived, to estimate the server clock. */
+let lastSnapshot: { serverTime: number; at: number } | null = null;
+
+/** Estimated server clock (ms) right now. */
+function serverClockNow(): number {
+  return lastSnapshot ? lastSnapshot.serverTime + (performance.now() - lastSnapshot.at) : interp.renderTime;
+}
+
+/**
+ * On each match update: as the server awaiting the serve, toss AUTOSERVE_DELAY_MS later,
+ * then strike a Drive at the toss apex. The toss started when we first see `tossing`, so
+ * its apex is tossApex() later; the server judges the strike at our `view`, so a view of
+ * that apex time is a perfect serve whenever the strike arrives within LAG.maxRewindMs.
+ */
+function autoServe(): void {
+  if (!selfLocked() || !match?.awaitingServe) {
+    window.clearTimeout(autoServeTimer);
+    autoServeState = "idle";
+    return;
+  }
+  if (!match.tossing && autoServeState === "idle") {
+    autoServeState = "tossing";
+    autoServeTimer = window.setTimeout(() => sendDevInput({ serve: true }), AUTOSERVE_DELAY_MS);
+  } else if (match.tossing && autoServeState !== "striking") {
+    autoServeState = "striking";
+    window.clearTimeout(autoServeTimer);
+    const apexMs = tossApex() * 1000;
+    const apex = serverClockNow() + apexMs;
+    autoServeTimer = window.setTimeout(() => sendDevInput({ shot: "drive", view: apex }), apexMs);
+  }
+}
+
+/** Send one extra input outside the frame loop (we are locked at the serve spot, so no movement). */
+function sendDevInput(extra: Partial<InputMsg>): void {
+  if (ownPos === null) return;
+  const msg: InputMsg = {
+    t: "input",
+    seq: inputSeq++,
+    ts: performance.now(),
+    move: { x: 0, z: 0 },
+    aim: serveAimAtBoxCentre(ownPos),
+    shot: null,
+    view: interp.renderTime,
+    serve: false,
+    ...extra,
+  };
+  net.send(msg);
+  predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
+  if (msg.shot && selfSlot) scene.triggerSwing(selfSlot);
+}
+
+/** Unit aim from the serve spot to the centre of the diagonal service box. */
+function serveAimAtBoxCentre(from: { x: number; z: number }): Vec2 {
+  const side = selfSide();
+  const target = { x: (-Math.sign(from.x) * COURT.width) / 4, z: (-side * SERVICE_LINE_DIST) / 2 };
+  const dx = target.x - from.x;
+  const dz = target.z - from.z;
+  const len = Math.hypot(dx, dz);
+  return { x: dx / len, z: dz / len };
+}
 
 // ── Name labels above avatars ────────────────────────────────────────────────
 

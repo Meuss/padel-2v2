@@ -1,5 +1,6 @@
 // Headless screenshot + render stats tool.
-// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--width n --height n] [--url u] [--quality high|low|auto]
+// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--autoserve] [--width n --height n] [--url u] [--quality high|low|auto]
+// --autoserve makes the player page serve by itself (toss, then a Drive at the apex), so bots rally.
 // --quality pins the renderer level (default high): SwiftShader is far too slow for the
 // automatic fallback, which would otherwise always drop to "low" mid-shot. "auto" pins
 // nothing, so the fallback runs (use a --wait longer than ~4.5 s to see it drop).
@@ -13,6 +14,7 @@ const { values: o } = parseArgs({
     out: { type: "string", default: ".shots" },
     wait: { type: "string", default: "4000" },
     spectator: { type: "boolean", default: false },
+    autoserve: { type: "boolean", default: false },
     width: { type: "string", default: "1440" },
     height: { type: "string", default: "900" },
     url: { type: "string", default: "http://localhost:5173" },
@@ -68,7 +70,8 @@ try {
     defaultViewport: { width, height, deviceScaleFactor: 1 },
   });
   const result = {};
-  result.player = await shoot(browser, "?join=Shooter&bots=3", "player.png", 4);
+  const autoserve = o.autoserve ? "&autoserve=1" : "";
+  result.player = await shoot(browser, `?join=Shooter&bots=3${autoserve}`, "player.png", 4);
   if (o.spectator) result.spectator = await shoot(browser, "?join=Watcher", "spectator.png", 4);
   const json = JSON.stringify(result, null, 2);
   await writeFile(join(o.out, "stats.json"), json + "\n");

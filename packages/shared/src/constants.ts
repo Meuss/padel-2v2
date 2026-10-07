@@ -81,6 +81,18 @@ export const SHOT = {
   offTiming: { power: 0.82, lift: 0.9, aimErrorDeg: 9 },
 } as const;
 
+/** Bot decision-making: their fixed "decent" skill and shot choice. */
+export const BOT = {
+  /** Chance a swing is timed one perfect-window early or late instead of perfect. */
+  offTimingChance: 0.25,
+  /** Chance of a Lob when the opponents are not both at the net. */
+  lobChance: 0.15,
+  /** Opponents closer than this |z| (m) to the net count as "at the net" (both there → Lob). */
+  netZoneM: 4,
+  /** Furthest |x| (m) a bot aims at. */
+  aimMaxX: 3.5,
+} as const;
+
 export const TOSS = {
   vy: 3.2, // m/s upward from SERVE.height
   expireS: 0.75, // toss falls back below the hand → "Missed the toss"

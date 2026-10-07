@@ -11,10 +11,12 @@
 import type { WebSocket } from "ws";
 import {
   BALL,
+  BOT,
   COURT,
   LAG,
   PLAYER,
   REACTIONS,
+  SHOT,
   SNAPSHOT_RATE,
   SWING,
   TICK_DT,
@@ -48,6 +50,7 @@ import {
 } from "@padel/shared";
 import { BallHistory, type BallSample } from "./history.js";
 import { MatchEngine } from "./match.js";
+import { mulberry32, type Rng } from "./rng.js";
 import { PhysicsWorld, type Contact } from "./world.js";
 
 const SLOT_ORDER: Slot[] = ["A1", "B1", "A2", "B2"];
@@ -100,6 +103,8 @@ interface PlayerSlot {
   isBot: boolean;
   serveReadyAt: number;
   botArmed: boolean; // ready to take one swing (re-armed when the ball leaves reach)
+  /** This approach's swing point, as a time-to-closest (s): 0 is perfect; rolled once per approach. */
+  botSwingAtS: number | null;
   lastReactionMs: number;
 }
 
@@ -143,16 +148,22 @@ export class Room {
   private lastSetupId = -1;
   private warmupIdle = 0;
   private botCounter = 0;
+  /** The team that last struck the ball (serve or rally hit): bots never swing at their own team's ball. */
+  private lastHitTeam: Team | null = null;
   private vote: { accepted: Set<string>; startedAt: number; initiator: string } | null =
     null;
 
   private constructor(
     private physics: PhysicsWorld,
     private match: MatchEngine,
+    /** Bot decisions only: seeded, so a seeded room replays the same match. */
+    private rng: Rng,
   ) {}
 
-  static async create(): Promise<Room> {
-    return new Room(await PhysicsWorld.create(), new MatchEngine());
+  /** `seed` makes bot decisions reproducible (tests); the default is random. */
+  static async create(opts: { seed?: number } = {}): Promise<Room> {
+    const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 32);
+    return new Room(await PhysicsWorld.create(), new MatchEngine(), mulberry32(seed));
   }
 
   start(): void {
@@ -205,6 +216,15 @@ export class Room {
   /** Spawn an AI bot into a free seat. Only a seated human may ask. */
   addBot(requesterId: string): boolean {
     if (!this.isSeated(requesterId)) return false;
+    return this.spawnBot();
+  }
+
+  /** Test only: seat up to `n` bots without a human. */
+  debugAddBots(n: number): void {
+    for (let i = 0; i < n && this.spawnBot(); i++);
+  }
+
+  private spawnBot(): boolean {
     const used = new Set(
       [...this.slots.values()].filter((p) => p.isBot).map((p) => p.name),
     );
@@ -266,6 +286,7 @@ export class Room {
       isBot,
       serveReadyAt: 0,
       botArmed: true,
+      botSwingAtS: null,
       lastReactionMs: 0,
     };
     this.slots.set(free, ps);
@@ -511,6 +532,7 @@ export class Room {
     if (!struck) return;
     this.physics.launchServe(struck.launch.from, struck.launch.to);
     this.hitSeq++;
+    this.lastHitTeam = ps.team;
     this.pendingShots.push({
       slot: ps.slot,
       kind: "serve",
@@ -596,6 +618,7 @@ export class Room {
       const v = shotVelocity(kind, timing, this.shotAim(ps));
       this.physics.setBallVelocity(v.x, v.y, v.z);
       this.hitSeq++;
+      if (inRally) this.lastHitTeam = ps.team;
       this.pendingShots.push({ slot: ps.slot, kind, timing, pos: live.pos });
     }
   }
@@ -658,14 +681,20 @@ export class Room {
     }
   }
 
-  /** Drive AI bots: hold a back-court lane, step to the ball only when it's a
-   *  genuine incoming ball in their half, swing in reach, serve on their turn. */
+  /**
+   * Drive AI bots: hold a back-court lane, step to the ball only when it's a genuine incoming
+   * ball in their half, and serve on their turn. A bot swings once per approach, when the
+   * ball's time to closest approach reaches the swing point rolled for that approach: the
+   * centre of the perfect window, or (BOT.offTimingChance) one window early or late.
+   */
   private updateBots(now: number): void {
     const phase = this.match.phase;
     const server = this.match.currentServer;
     const { pos: ball, vel } = this.physics.ballState();
     const halfL = COURT.length / 2;
     const unit = (v: number) => clamp(v, -1, 1);
+    /** Teams with a bot swinging this tick: two teammates on one tick would be a double hit. */
+    const swinging = new Set<Team>();
     for (const ps of this.slots.values()) {
       if (!ps.isBot) continue;
       const s = ps.side;
@@ -681,7 +710,7 @@ export class Room {
       // Target: the ball if it's ours to take, otherwise our back-court lane spot.
       const tx = chase ? ball.x : laneX;
       const tz = chase ? ball.z : backZ;
-      ps.input = {
+      const input: InputMsg = {
         t: "input",
         seq: 0,
         ts: now,
@@ -691,22 +720,30 @@ export class Room {
         view: now, // bots see the present
         serve: false,
       };
-      const dx = ball.x - ps.pos.x;
-      const dz = ball.z - ps.pos.z;
-      // Swing once per approach: only when the ball is on the bot's own side
-      // and has re-entered reach (re-armed after it leaves), so the bot never
-      // hits its own ball twice.
-      if (phase === "rally" && Math.sign(ball.z) === s) {
-        const d = Math.hypot(dx, ball.y - PLAYER.racketHeight, dz);
-        const inReach = d <= PLAYER.reach + BALL.radius + 0.2;
-        if (inReach && ps.botArmed) {
-          ps.shotRequested = "drive";
-          ps.botArmed = false;
-        } else if (!inReach) {
+      ps.input = input;
+      // Only a ball on our side that the other team struck last is ours to swing at.
+      if (phase === "rally" && onOurSide && this.lastHitTeam !== ps.team) {
+        // Judge from where the bot will stand when the swing resolves: after this tick's move.
+        const at = stepPlayer(ps.pos, input.move, s, TICK_DT);
+        const racket = { x: at.x, y: PLAYER.racketHeight, z: at.z };
+        const inReach = swingConnects(racket.x, racket.y, racket.z, ball, PLAYER.reach + BALL.radius);
+        if (!inReach) {
           ps.botArmed = true;
+          ps.botSwingAtS = null;
+        } else if (ps.botArmed && !swinging.has(ps.team)) {
+          ps.botSwingAtS ??= this.rollSwingAt();
+          const rel = { x: ball.x - racket.x, y: ball.y - racket.y, z: ball.z - racket.z };
+          if (timeToClosest(rel, vel) <= ps.botSwingAtS) {
+            ps.shotRequested = this.chooseBotShot(ps);
+            input.aim = this.botAim(ps, at);
+            ps.botArmed = false;
+            ps.botSwingAtS = null;
+            swinging.add(ps.team);
+          }
         }
       } else {
         ps.botArmed = true;
+        ps.botSwingAtS = null;
       }
       if (phase === "serve" && server === ps.slot) {
         const t = this.match.tossElapsed(now);
@@ -719,6 +756,40 @@ export class Room {
         ps.serveReadyAt = 0;
       }
     }
+  }
+
+  /** A bot's swing point (time to closest, s): perfect, or one window early or late. */
+  private rollSwingAt(): number {
+    if (this.rng() >= BOT.offTimingChance) return 0;
+    const window = 2 * SHOT.perfectWindowS;
+    return this.rng() < 0.5 ? window : -window;
+  }
+
+  /** Lob when both opponents are at the net (or now and then); otherwise Drive. High balls become Smashes. */
+  private chooseBotShot(ps: PlayerSlot): "drive" | "lob" {
+    const opponents = [...this.slots.values()].filter((p) => p.team !== ps.team);
+    const atNet = opponents.length > 0 && opponents.every((p) => Math.abs(p.pos.z) < BOT.netZoneM);
+    return atNet || this.rng() < BOT.lobChance ? "lob" : "drive";
+  }
+
+  /** Aim into the opposite half, toward the open side: away from the nearest opponent's x. */
+  private botAim(ps: PlayerSlot, from: Vec2): Vec2 {
+    let nearest: PlayerSlot | null = null;
+    let best = Infinity;
+    for (const p of this.slots.values()) {
+      if (p.team === ps.team) continue;
+      const d = Math.hypot(p.pos.x - from.x, p.pos.z - from.z);
+      if (d < best) {
+        best = d;
+        nearest = p;
+      }
+    }
+    const targetX = nearest === null ? 0 : nearest.pos.x >= 0 ? -BOT.aimMaxX : BOT.aimMaxX;
+    const targetZ = -ps.side * COURT.length * 0.25;
+    const dx = targetX - from.x;
+    const dz = targetZ - from.z;
+    const len = Math.hypot(dx, dz);
+    return { x: dx / len, z: dz / len };
   }
 
   private boxCentre(): Vec2 {
