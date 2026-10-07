@@ -19,13 +19,11 @@ import {
   TICK_DT,
   TICK_MS,
   TICK_RATE,
-  confineToHalf,
   encode,
   hitVelocity,
-  normalizeMove,
+  stepPlayer,
   swingConnects,
   type ReactionMsg,
-  type HalfBounds,
   type InputMsg,
   type KickedMsg,
   type MatchMsg,
@@ -63,6 +61,8 @@ interface PlayerSlot {
   pos: { x: number; z: number };
   yaw: number;
   input: InputMsg | null;
+  inputQueue: InputMsg[]; // humans: one is consumed per tick, in order
+  ack: number | undefined; // seq of the last input applied (humans)
   swingRequested: boolean;
   serveRequested: boolean;
   lastSwingMs: number;
@@ -82,14 +82,10 @@ export interface Client {
 
 const IDLE_KICK_MS = 60_000;
 const VOTE_TIMEOUT_MS = 30_000;
+/** Max inputs buffered per player (~133 ms at 60 Hz); older ones are dropped. */
+const MAX_QUEUED_INPUTS = 8;
 
 const TICKS_PER_SNAPSHOT = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_RATE));
-const MARGIN = PLAYER.radius + 0.15;
-const HALF_BOUNDS: HalfBounds = {
-  halfW: COURT.width / 2 - MARGIN,
-  halfL: COURT.length / 2 - MARGIN,
-  netGap: PLAYER.radius + 0.1,
-};
 
 export class Room {
   private clients = new Map<string, Client>();
@@ -113,7 +109,7 @@ export class Room {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.update(), TICK_MS);
+    this.timer = setInterval(() => this.step(), TICK_MS);
   }
 
   stop(): void {
@@ -186,6 +182,8 @@ export class Room {
       pos: this.homePosition(free, this.match.sideOf(team)),
       yaw: this.match.sideOf(team) < 0 ? 0 : Math.PI,
       input: null,
+      inputQueue: [],
+      ack: undefined,
       swingRequested: false,
       serveRequested: false,
       lastSwingMs: 0,
@@ -224,7 +222,8 @@ export class Room {
   handleInput(clientId: string, input: InputMsg): void {
     for (const ps of this.slots.values()) {
       if (ps.clientId === clientId) {
-        ps.input = input;
+        ps.inputQueue.push(input);
+        if (ps.inputQueue.length > MAX_QUEUED_INPUTS) ps.inputQueue.shift();
         if (input.swing) ps.swingRequested = true;
         if (input.serve) ps.serveRequested = true;
         return;
@@ -352,7 +351,8 @@ export class Room {
 
   // ── Loop ───────────────────────────────────────────────────────────────────
 
-  private update(): void {
+  /** Advance the room by one fixed tick (called by the loop; public for tests). */
+  step(): void {
     const now = performance.now();
     // Keep each player's defended side in sync with the match (handles swaps).
     for (const ps of this.slots.values()) ps.side = this.match.sideOf(ps.team);
@@ -397,21 +397,27 @@ export class Room {
   private integratePlayers(): void {
     const server = this.match.currentServer;
     for (const ps of this.slots.values()) {
-      // The serving player is locked at the serve spot until they serve.
-      if (this.match.phase === "serve" && ps.slot === server) continue;
-      const inp = ps.input;
-      if (inp) {
-        const m = normalizeMove(inp.move.x, inp.move.z);
-        // Player frame → world: x = strafe·side, z = -forward·side.
-        ps.pos.x += m.x * ps.side * PLAYER.speed * TICK_DT;
-        ps.pos.z += -m.z * ps.side * PLAYER.speed * TICK_DT;
-        if (inp.aim.x !== 0 || inp.aim.z !== 0) {
-          ps.yaw = Math.atan2(inp.aim.x, inp.aim.z);
+      // Humans consume exactly one queued input per tick and do NOT move when
+      // the queue is empty, so the client can replay the same steps exactly.
+      // Bots write `ps.input` directly every tick.
+      let move = { x: 0, z: 0 };
+      if (ps.isBot) {
+        if (ps.input) move = ps.input.move;
+      } else {
+        const next = ps.inputQueue.shift();
+        if (next) {
+          ps.input = next;
+          ps.ack = next.seq;
+          move = next.move;
         }
       }
-      const c = confineToHalf(ps.pos, ps.side, HALF_BOUNDS);
-      ps.pos.x = c.x;
-      ps.pos.z = c.z;
+      const aim = ps.input?.aim;
+      if (aim && (aim.x !== 0 || aim.z !== 0)) ps.yaw = Math.atan2(aim.x, aim.z);
+      // The serving player is locked at the serve spot until they serve.
+      if (this.match.phase === "serve" && ps.slot === server) continue;
+      const p = stepPlayer(ps.pos, move, ps.side, TICK_DT);
+      ps.pos.x = p.x;
+      ps.pos.z = p.z;
     }
   }
 
@@ -548,6 +554,7 @@ export class Room {
         pos: { x: ps.pos.x, y: 0, z: ps.pos.z },
         yaw: ps.yaw,
         swing: ps.swung,
+        ...(ps.ack !== undefined && { ack: ps.ack }),
       });
       ps.swung = false;
     }

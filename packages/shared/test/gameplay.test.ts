@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  PLAYER,
+  PLAYER_BOUNDS,
+  TICK_DT,
   confineToHalf,
   hitVelocity,
   normalizeMove,
+  stepPlayer,
   swingConnects,
   type HalfBounds,
 } from "@padel/shared";
@@ -55,5 +59,30 @@ describe("hitVelocity", () => {
     expect(hitVelocity({ x: 0, z: -1 }, 9, 4.5)).toEqual({ x: 0, y: 4.5, z: -9 });
     const diag = hitVelocity({ x: 0.6, z: 0.8 }, 10, 3);
     expect(diag).toEqual({ x: 6, y: 3, z: 8 });
+  });
+});
+
+describe("stepPlayer", () => {
+  it("moves forward toward the net in the player's frame", () => {
+    // Side -1 defends z<0, so "forward" is +z.
+    const p = stepPlayer({ x: 0, z: -5 }, { x: 0, z: 1 }, -1, TICK_DT);
+    expect(p.z).toBeCloseTo(-5 + PLAYER.speed * TICK_DT, 10);
+    expect(p.x).toBe(0);
+    // Side +1 defends z>0, so "forward" is -z and strafe-right is -x.
+    const q = stepPlayer({ x: 0, z: 5 }, { x: 1, z: 1 }, 1, TICK_DT);
+    expect(q.z).toBeLessThan(5);
+    expect(q.x).toBeGreaterThan(0);
+  });
+
+  it("does not move faster on diagonals", () => {
+    const d = stepPlayer({ x: 0, z: -5 }, { x: 1, z: 1 }, -1, 0.1);
+    expect(Math.hypot(d.x, d.z + 5)).toBeCloseTo(PLAYER.speed * 0.1, 10);
+  });
+
+  it("keeps the player inside their half", () => {
+    const p = stepPlayer({ x: 0, z: -0.6 }, { x: 0, z: 1 }, -1, 1);
+    expect(p.z).toBe(-PLAYER_BOUNDS.netGap);
+    const q = stepPlayer({ x: 0, z: -5 }, { x: 0, z: 0 }, 1, TICK_DT); // side just swapped
+    expect(q.z).toBe(PLAYER_BOUNDS.netGap);
   });
 });

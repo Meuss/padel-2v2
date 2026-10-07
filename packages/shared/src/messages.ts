@@ -130,6 +130,8 @@ export interface PlayerState {
   yaw: number;
   /** True if this player swung since the previous snapshot (drives animation). */
   swing?: boolean;
+  /** Seq of the last input the server applied for this player (humans only). */
+  ack?: number;
 }
 
 /** Authoritative world state at a given tick. */

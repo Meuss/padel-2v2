@@ -1,9 +1,10 @@
 /**
- * Pure gameplay math shared by the server (authoritative) and available to the
- * client for prediction later. No physics-engine or DOM dependencies, so these
+ * Pure gameplay math shared by the server (authoritative) and used by the
+ * client for prediction. No physics-engine or DOM dependencies, so these
  * are trivially unit-testable and identical on both sides.
  */
 import type { Vec2, Vec3 } from "./messages.js";
+import { COURT, PLAYER } from "./constants.js";
 
 /** Cap a move vector to unit length so diagonals aren't faster than cardinals. */
 export function normalizeMove(x: number, z: number): Vec2 {
@@ -30,6 +31,34 @@ export function confineToHalf(pos: Vec2, side: number, b: HalfBounds): Vec2 {
       ? clamp(pos.z, -b.halfL, -b.netGap)
       : clamp(pos.z, b.netGap, b.halfL);
   return { x, z };
+}
+
+const PLAYER_MARGIN = PLAYER.radius + 0.15;
+
+/** How far players may move inside their half: walls minus body radius, net gap. */
+export const PLAYER_BOUNDS: HalfBounds = {
+  halfW: COURT.width / 2 - PLAYER_MARGIN,
+  halfL: COURT.length / 2 - PLAYER_MARGIN,
+  netGap: PLAYER.radius + 0.1,
+};
+
+/**
+ * Advance a player by one movement step. This is the ONLY movement integrator:
+ * the server runs it once per tick and the client replays it for prediction, so
+ * both must call it with identical inputs to agree. `move` is in the player's
+ * frame (x = strafe right, z = toward the net); `side` is the z-sign of the half
+ * they defend.
+ */
+export function stepPlayer(pos: Vec2, move: Vec2, side: -1 | 1, dt: number): Vec2 {
+  const m = normalizeMove(move.x, move.z);
+  return confineToHalf(
+    {
+      x: pos.x + m.x * side * PLAYER.speed * dt,
+      z: pos.z - m.z * side * PLAYER.speed * dt,
+    },
+    side,
+    PLAYER_BOUNDS,
+  );
 }
 
 /** Whether a swing at (px, racketY, pz) can reach the ball. */
