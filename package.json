@@ -17,6 +17,9 @@
     "shoot": "node scripts/shoot.mjs"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "concurrently": "^10.0.5",
     "puppeteer-core": "^24.43.1",
     "typescript": "^7.0.2",
