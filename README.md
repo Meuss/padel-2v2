@@ -1,4 +1,4 @@
-# Padel 2v2
+# Meuss Padel Club
 
 A browser-based 2v2 online padel game: server-authoritative physics over
 WebSockets, rendered with Three.js. The first four visitors play, everyone else
@@ -6,7 +6,19 @@ spectates.
 
 **Play:** https://meuss.github.io/padel-2v2/
 
-![Padel 2v2](screenshot.png)
+## V1 → V2
+
+V2 is a full redesign built with **Claude Opus 5.5** (in Claude Code). It covers
+the look, how hits feel, the netcode and the match flow.
+
+| V1 | V2 |
+|---|---|
+| ![V1: the original game](docs/screenshots/v1.png) | *In progress. The real in-game screenshot arrives with the new arena.* |
+| The original game. | Pro-tour broadcast look, Drive / Lob / Smash with Timing, client-side prediction, instant replays, a final card and a rematch vote. |
+
+V2 lands in stages. The live link runs whatever stage is currently deployed. The
+design target for V2 is in [docs/design/v2-comp-clean-feed.png](docs/design/v2-comp-clean-feed.png)
+(a generated mockup, not a screenshot).
 
 ## Run locally
 

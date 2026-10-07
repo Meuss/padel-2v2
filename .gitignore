@@ -4,3 +4,9 @@ dist/
 .DS_Store
 .env
 .env.local
+
+# Impeccable design tooling: local working files (approved comp is copied to docs/design/)
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/build/
+.impeccable/live/
