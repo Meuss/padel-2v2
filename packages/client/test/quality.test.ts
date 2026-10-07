@@ -25,6 +25,37 @@ describe("QualityMonitor", () => {
     expect(run(m, 25, 4400, 4600).q).toBe("low");
   });
 
+  it("returns to high only after two windows of 17 ms (60 Hz vsync) frames", () => {
+    const m = new QualityMonitor("low", 0);
+    expect(run(m, 17, 0, 4600).q).toBe("low"); // one good window
+    expect(run(m, 17, 4600, 7400).q).toBe("low");
+    expect(run(m, 17, 7400, 7700).q).toBe("high"); // the second good window
+  });
+
+  it("stays low on 20 ms frames (not under the 18 ms recovery threshold)", () => {
+    const m = new QualityMonitor("low", 0);
+    expect(run(m, 20, 0, 20000).q).toBe("low");
+  });
+
+  it("does not drop when a hidden tab returns (3 frames plus one 3000 ms frame)", () => {
+    const m = new QualityMonitor("high", 0);
+    let t = 2000;
+    // Frames are often slow just before the tab hides; old median of these 4 is 32 ms.
+    for (const ms of [16, 24, 40]) m.sample(ms, (t += ms));
+    t += 3000;
+    expect(m.sample(3000, t)).toBe("high"); // closes an under-filled window: skipped
+    expect(run(m, 16, t, t + 10000).q).toBe("high");
+  });
+
+  it("ignores a 3000 ms frame among normal 10 ms frames", () => {
+    const m = new QualityMonitor("low", 0);
+    let t = run(m, 10, 0, 3000).t;
+    t += 3000;
+    m.sample(3000, t); // a stall: not counted
+    // The windows around the stall stay good, so two of them still bring "high" back.
+    expect(run(m, 10, t, t + 6100).q).toBe("high");
+  });
+
   it("returns to high only after two windows of 10 ms frames", () => {
     const m = new QualityMonitor("low", 0);
     expect(run(m, 10, 0, 4600).q).toBe("low"); // one good window

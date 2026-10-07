@@ -4,12 +4,16 @@ const WARMUP_MS = 1500;
 const WINDOW_MS = 3000;
 /** Median frame time above which "high" drops to "low" (below ~45 fps). */
 const DROP_MS = 22;
-/** Median frame time under which "low" may climb back to "high"… */
-const RISE_MS = 12;
+/** Median frame time under which "low" may climb back to "high" (60 Hz vsync is ~16.7 ms)… */
+const RISE_MS = 18;
 /** …for this many consecutive windows. */
 const RISE_WINDOWS = 2;
 /** After this many drops, "low" sticks for the session. */
 const MAX_DROPS = 2;
+/** Longer frames are stalls (hidden tab, GC, loading), not render cost: ignored entirely. */
+const STALL_MS = 250;
+/** A window with fewer frames than this is skipped, not judged. */
+const MIN_SAMPLES = 30;
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
@@ -34,13 +38,15 @@ export class QualityMonitor {
   /** Feed one frame time; returns the quality to use now (may change at most once per 3 s window). */
   sample(frameMs: number, nowMs: number): Quality {
     if (nowMs < this.windowStart) return this.q; // warm-up
-    this.frames.push(frameMs);
+    if (frameMs <= STALL_MS) this.frames.push(frameMs);
     if (nowMs - this.windowStart < WINDOW_MS) return this.q;
 
-    // The window is complete: judge it once, then start the next one.
-    const m = median(this.frames);
+    // The window is complete: judge it once (if it has enough frames), then start the next one.
+    const frames = this.frames;
     this.frames = [];
     this.windowStart = nowMs;
+    if (frames.length < MIN_SAMPLES) return this.q;
+    const m = median(frames);
     if (this.q === "high") {
       if (m > DROP_MS) {
         this.q = "low";
