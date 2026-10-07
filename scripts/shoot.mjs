@@ -1,7 +1,8 @@
 // Headless screenshot + render stats tool.
-// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--width n --height n] [--url u] [--quality high|low]
+// Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--width n --height n] [--url u] [--quality high|low|auto]
 // --quality pins the renderer level (default high): SwiftShader is far too slow for the
-// automatic fallback, which would otherwise always drop to "low" mid-shot.
+// automatic fallback, which would otherwise always drop to "low" mid-shot. "auto" pins
+// nothing, so the fallback runs (use a --wait longer than ~4.5 s to see it drop).
 import { parseArgs } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,7 +19,8 @@ const { values: o } = parseArgs({
     quality: { type: "string", default: "high" },
   },
 });
-if (o.quality !== "high" && o.quality !== "low") throw new Error(`--quality must be high or low, got ${o.quality}`);
+if (!["high", "low", "auto"].includes(o.quality)) throw new Error(`--quality must be high, low or auto, got ${o.quality}`);
+const qualityParam = o.quality === "auto" ? "" : `&quality=${o.quality}`;
 const wait = Number(o.wait);
 const width = Number(o.width);
 const height = Number(o.height);
@@ -27,7 +29,7 @@ const chrome = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Conte
 async function shoot(browser, path, file, expectTags) {
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.error("[pageerror]", e.message));
-  await page.goto(`${o.url}/${path}&quality=${o.quality}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${o.url}/${path}${qualityParam}`, { waitUntil: "domcontentloaded" });
   try {
     await page.waitForFunction(
       (n) => window.__padelScene && document.querySelectorAll(".nametag").length >= n,

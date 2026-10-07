@@ -105,7 +105,13 @@ export class PadelScene {
 
     this.applyQuality("high");
     window.addEventListener("resize", this.onResize);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
+
+  /** A hidden tab stalls the frame loop: start a fresh quality window once it is visible again. */
+  private onVisibilityChange = (): void => {
+    if (document.visibilityState === "visible") this.monitor?.resetWindow(performance.now());
+  };
 
   /** Pin the quality level and stop the automatic fallback (dev `?quality=` param). */
   forceQuality(q: Quality): void {

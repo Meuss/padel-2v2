@@ -43,7 +43,9 @@ describe("QualityMonitor", () => {
     // Frames are often slow just before the tab hides; old median of these 4 is 32 ms.
     for (const ms of [16, 24, 40]) m.sample(ms, (t += ms));
     t += 3000;
-    expect(m.sample(3000, t)).toBe("high"); // closes an under-filled window: skipped
+    // The 3000 ms frame is a stall (not kept), and 80 ms of kept frames cover far less than
+    // half of the window, so the window is skipped rather than judged.
+    expect(m.sample(3000, t)).toBe("high");
     expect(run(m, 16, t, t + 10000).q).toBe("high");
   });
 
@@ -83,6 +85,36 @@ describe("QualityMonitor", () => {
     q = m.sample(200, 3200);
     q = run(m, 16, 3200, 10000).q;
     expect(q).toBe("high");
+  });
+
+  it("drops to low on a very slow machine (steady 300 ms frames) within warm-up plus one window", () => {
+    const m = new QualityMonitor("high", 0);
+    expect(run(m, 300, 0, 4200).q).toBe("high");
+    expect(run(m, 300, 4200, 4500).q).toBe("low"); // ~4.5 s: 1.5 s warm-up + one 3 s window
+  });
+
+  it("drops to low on steady 125 ms frames (8 fps, only 24 frames per window)", () => {
+    const m = new QualityMonitor("high", 0);
+    expect(run(m, 125, 0, 4625).q).toBe("low");
+  });
+
+  it("resetWindow discards the partial window", () => {
+    const m = new QualityMonitor("high", 0);
+    // 2.9 s of terrible frames: one more would close a window and drop.
+    let t = run(m, 100, 0, 4400).t;
+    m.resetWindow(t);
+    // Good frames from here: the bad partial window is gone, so nothing drops.
+    expect(run(m, 16, t, t + 3100).q).toBe("high");
+    t += 3100;
+    expect(run(m, 16, t, t + 10000).q).toBe("high");
+  });
+
+  it("resetWindow does not cut the warm-up short", () => {
+    const m = new QualityMonitor("high", 0);
+    m.resetWindow(100);
+    // Bad frames until 4400 ms: the first window still ends at 1500 + 3000 = 4500 ms.
+    expect(run(m, 25, 0, 4400).q).toBe("high");
+    expect(run(m, 25, 4400, 4600).q).toBe("low");
   });
 
   it("switches at most once per window", () => {

@@ -10,10 +10,16 @@ const RISE_MS = 18;
 const RISE_WINDOWS = 2;
 /** After this many drops, "low" sticks for the session. */
 const MAX_DROPS = 2;
-/** Longer frames are stalls (hidden tab, GC, loading), not render cost: ignored entirely. */
-const STALL_MS = 250;
-/** A window with fewer frames than this is skipped, not judged. */
-const MIN_SAMPLES = 30;
+/**
+ * Longer frames are stalls (hidden tab, GC, loading), not render cost: ignored entirely.
+ * High enough that a machine rendering at 2–4 fps still gets judged.
+ */
+const STALL_MS = 1000;
+/**
+ * A window is judged only when its kept frames cover at least this share of its length,
+ * so a window mostly spent in a stall is skipped rather than judged on a few frames.
+ */
+const MIN_COVERAGE = 0.5;
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
@@ -26,6 +32,8 @@ export class QualityMonitor {
   private q: Quality;
   private windowStart: number;
   private frames: number[] = [];
+  /** Sum of `frames`, i.e. the window time they cover. */
+  private covered = 0;
   private goodWindows = 0;
   private drops = 0;
 
@@ -38,14 +46,18 @@ export class QualityMonitor {
   /** Feed one frame time; returns the quality to use now (may change at most once per 3 s window). */
   sample(frameMs: number, nowMs: number): Quality {
     if (nowMs < this.windowStart) return this.q; // warm-up
-    if (frameMs <= STALL_MS) this.frames.push(frameMs);
-    if (nowMs - this.windowStart < WINDOW_MS) return this.q;
+    if (frameMs <= STALL_MS) {
+      this.frames.push(frameMs);
+      this.covered += frameMs;
+    }
+    const elapsed = nowMs - this.windowStart;
+    if (elapsed < WINDOW_MS) return this.q;
 
-    // The window is complete: judge it once (if it has enough frames), then start the next one.
+    // The window is complete: judge it once (if its frames cover enough of it), then start the next one.
     const frames = this.frames;
-    this.frames = [];
-    this.windowStart = nowMs;
-    if (frames.length < MIN_SAMPLES) return this.q;
+    const covered = this.covered;
+    this.resetWindow(nowMs);
+    if (frames.length === 0 || covered < elapsed * MIN_COVERAGE) return this.q;
     const m = median(frames);
     if (this.q === "high") {
       if (m > DROP_MS) {
@@ -61,5 +73,13 @@ export class QualityMonitor {
       }
     }
     return this.q;
+  }
+
+  /** Discard the partial window and start a fresh one at `nowMs` (e.g. when a hidden tab becomes visible). */
+  resetWindow(nowMs: number): void {
+    this.frames = [];
+    this.covered = 0;
+    // Never cut the initial warm-up short.
+    this.windowStart = Math.max(this.windowStart, nowMs);
   }
 }
