@@ -193,6 +193,201 @@
   opacity: 0.45;
 }
 
+/* ── Score bug, bottom-left (measured from docs/design/v2-comp-clean-feed.png) ── */
+
+#scorebug {
+  --sb-head-h: 3.1vh;
+  --sb-row-h: 4.2vh;
+  --sb-cell-w: 15%;
+  --sb-rule: rgba(244, 247, 255, 0.16);
+  position: fixed;
+  left: 4.9vw;
+  bottom: 4.6vh;
+  width: 18.2vw;
+  min-width: 260px;
+  border: 1px solid rgba(244, 247, 255, 0.34);
+  pointer-events: none;
+  user-select: none;
+}
+
+.sb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--sb-head-h);
+  min-height: 20px;
+  padding: 0 0.7em;
+  background: var(--bug-white);
+  color: var(--bug-ink);
+  font-size: clamp(12px, 1.9vh, 28px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.sb-tb {
+  padding: 0.15em 0.4em;
+  background: var(--bug-navy);
+  color: var(--bug-white);
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+}
+
+.sb-row {
+  display: flex;
+  align-items: stretch;
+  height: var(--sb-row-h);
+  min-height: 28px;
+  background: linear-gradient(180deg, #172649 0%, var(--bug-navy) 100%);
+  font-size: clamp(16px, 2.6vh, 40px);
+  font-weight: 700;
+}
+.sb-row + .sb-row {
+  border-top: 1px solid var(--sb-rule);
+}
+.sb-bar {
+  flex: none;
+  width: 0.35vw;
+  min-width: 4px;
+}
+.sb-row.azul .sb-bar {
+  background: var(--azul);
+}
+.sb-row.rojo .sb-bar {
+  background: var(--rojo);
+}
+/* The serve dot slot is always there, so names never shift when the serve changes ends. */
+.sb-dot {
+  flex: none;
+  align-self: center;
+  width: 0.7vh;
+  min-width: 5px;
+  aspect-ratio: 1;
+  margin: 0 0.55em 0 0.6em;
+  border-radius: 50%;
+}
+.sb-row.serving .sb-dot {
+  background: var(--optic);
+}
+.sb-name {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  color: var(--bug-white);
+  letter-spacing: 0.03em;
+  padding-top: 0.06em;
+}
+.sb-games,
+.sb-points {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--sb-cell-w);
+  padding-top: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.sb-games {
+  --sb-cell-bg: var(--bug-navy-2);
+  --sb-cell-flash: #2a3d70;
+  background: var(--sb-cell-bg);
+  border-left: 1px solid var(--sb-rule);
+  color: var(--bug-white);
+}
+.sb-points {
+  --sb-cell-bg: var(--bug-white);
+  --sb-cell-flash: #ffffff;
+  background: var(--sb-cell-bg);
+  color: var(--bug-ink);
+}
+.sb-row + .sb-row .sb-points {
+  border-top: 1px solid rgba(11, 16, 32, 0.12);
+  margin-top: -1px;
+}
+/* A changed value: the cell lifts slightly brighter, then settles. No scale. */
+.sb-games.flash,
+.sb-points.flash {
+  animation: sb-flash 300ms var(--ease-out);
+}
+@keyframes sb-flash {
+  from {
+    background: var(--sb-cell-flash);
+    box-shadow: inset 0 0 0 999px rgba(244, 247, 255, 0.14);
+  }
+}
+
+.sb-warmup {
+  display: flex;
+  align-items: center;
+  height: var(--sb-row-h);
+  min-height: 28px;
+  padding: 0 0.8em;
+  background: var(--bug-navy);
+  color: var(--bug-white);
+  font-size: clamp(14px, 2.1vh, 32px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+.sb-rows[hidden],
+.sb-warmup[hidden],
+.sb-tb[hidden] {
+  display: none;
+}
+
+/* The Spanish score call: a thin strip under the bug, for 2.5 s after each point. */
+.sb-call {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: -1px;
+  right: -1px;
+  display: flex;
+  align-items: center;
+  height: var(--sb-head-h);
+  min-height: 20px;
+  padding: 0 0.8em;
+  background: rgba(15, 26, 51, 0.92);
+  border-top: 1px solid var(--optic);
+  color: var(--bug-white);
+  font-size: clamp(13px, 2vh, 30px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 150ms var(--ease-out),
+    transform 150ms var(--ease-out);
+}
+.sb-call.show {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Serve prompt: lower-third plate, bottom-centre; hidden during the rally ── */
+
+#serveprompt {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(44px, 9vh, 130px);
+  display: none;
+  max-width: min(60vw, 900px);
+  padding: 0.55em 1.2em 0.5em;
+  border-top: 2px solid var(--optic);
+  font-size: var(--t-md);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#serveprompt.show {
+  display: block;
+}
+#serveprompt .who {
+  display: inline-block;
+  vertical-align: bottom;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── V1 elements, kept working until Tasks 3–6 replace them ───────────────── */
 
 #labels {
@@ -219,19 +414,6 @@
 }
 #labels .nametag.B {
   border-color: #ff6b6b;
-}
-
-#serving {
-  position: fixed;
-  top: 52px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #ffe08a;
-  font-size: 15px;
-  font-weight: 700;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-  display: none;
-  pointer-events: none;
 }
 
 /* Lives in #topright, under the controls. */
@@ -377,52 +559,6 @@
   min-height: 14px;
 }
 
-#scoreboard {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 8px 16px;
-  background: rgba(8, 12, 28, 0.78);
-  border: 1px solid rgba(120, 160, 255, 0.25);
-  border-radius: 10px;
-  color: #eaf1ff;
-  font-size: 15px;
-  display: flex;
-  gap: 18px;
-  align-items: center;
-  white-space: nowrap;
-}
-#scoreboard .team {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-weight: 600;
-}
-#scoreboard .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-#scoreboard .blue {
-  color: #6db0ff;
-}
-#scoreboard .red {
-  color: #ff8a8a;
-}
-#scoreboard .pts {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.95;
-}
-#scoreboard .serving {
-  font-size: 11px;
-  opacity: 0.7;
-}
-#scoreboard:empty {
-  display: none;
-}
-
 #flash {
   position: fixed;
   top: 33%;
@@ -439,22 +575,4 @@
 }
 #flash.show {
   opacity: 1;
-}
-
-#serveprompt {
-  position: fixed;
-  bottom: 52px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 9px 18px;
-  background: rgba(20, 120, 70, 0.9);
-  border-radius: 999px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  display: none;
-}
-#serveprompt.waiting {
-  background: rgba(40, 50, 80, 0.85);
-  font-weight: 500;
 }

@@ -1,6 +1,6 @@
 /**
  * Client bootstrap: nickname entry, scene + input, and keeping the HUD,
- * scoreboard, name labels and reset-vote UI in sync with the authoritative
+ * score bug, name labels and reset-vote UI in sync with the authoritative
  * match state. Sends throttled activity pings so the server can idle-kick.
  */
 import {
@@ -29,6 +29,7 @@ import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
+import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import "./hud/hud.css";
 
 const app = document.getElementById("app")!;
@@ -37,7 +38,8 @@ const connLabel = document.getElementById("conn-label")!;
 const watching = document.getElementById("watching")!;
 const watchingN = document.getElementById("watching-n")!;
 const hint = document.getElementById("hint")!;
-const scoreboard = document.getElementById("scoreboard")!;
+const scoreBug = new ScoreBug(document.getElementById("scorebug")!);
+scoreBug.render(bugModel(null, null));
 const flash = document.getElementById("flash")!;
 const servePrompt = document.getElementById("serveprompt")!;
 const labels = document.getElementById("labels")!;
@@ -47,7 +49,6 @@ const nickname = document.getElementById("nickname")!;
 const nickInput = document.getElementById("nick-input") as HTMLInputElement;
 const nickGo = document.getElementById("nick-go")!;
 const nickMsg = document.getElementById("nick-msg")!;
-const serving = document.getElementById("serving")!;
 const loading = document.getElementById("loading")!;
 const loadingTitle = document.getElementById("loading-title")!;
 const loadingHint = document.getElementById("loading-hint")!;
@@ -149,10 +150,6 @@ function fadeHint(): void {
   hint.classList.add("faded");
 }
 
-function teamOfSlot(slot: Slot | null): Team | null {
-  return slot ? (slot.startsWith("A") ? "A" : "B") : null;
-}
-
 const SEATS: Slot[] = ["A1", "A2", "B1", "B2"];
 let lastCheered: string | null = null;
 /** How long a reaction stays on the LED boards. */
@@ -208,54 +205,23 @@ function setRallyShots(n: number): void {
   audio.crowd(crowdLevel(n));
 }
 
-function renderServing(): void {
+/** Lower-third serve prompt: instructions for the server, "<NAME> TO SERVE" for everyone else. */
+function renderServePrompt(): void {
   const m = match;
-  if (m && m.serverSlot && (m.phase === "serve" || m.phase === "rally")) {
-    const nm = names.get(m.serverSlot)?.name ?? m.serverSlot;
-    serving.textContent = `🎾 ${nm} is serving`;
-    serving.style.display = "block";
-  } else {
-    serving.style.display = "none";
-  }
-}
-
-function renderScoreboard(): void {
-  renderServing();
-  if (!match || match.phase === "warmup") {
-    scoreboard.innerHTML = match
-      ? `<span>Warm-up · need a player on each team to start a match</span>`
-      : "";
-    servePrompt.style.display = "none";
+  if (!m || m.phase !== "serve" || !m.awaitingServe || !m.serverSlot) {
+    servePrompt.classList.remove("show");
     return;
   }
-  const serveTeam = teamOfSlot(match.serverSlot);
-  const tag = (team: Team, label: string, color: string, games: number, pts: string) => `
-    <span class="team ${team === "A" ? "blue" : "red"}">
-      <span class="dot" style="background:${color}"></span>${label}
-      <span class="pts">${games} &nbsp; ${pts}</span>${serveTeam === team ? " 🎾" : ""}
-    </span>`;
-  scoreboard.innerHTML =
-    tag("A", "BLUE", "#3b82f6", match.gamesA, match.pointA) +
-    `<span style="opacity:.4">vs</span>` +
-    tag("B", "RED", "#ef4444", match.gamesB, match.pointB) +
-    (match.phase === "over"
-      ? ` <span class="serving">— match over</span>`
-      : match.tiebreak
-        ? ` <span class="serving">tiebreak</span>`
-        : "");
-
-  if (match.phase === "serve" && match.awaitingServe) {
-    if (match.serverSlot === selfSlot) {
-      servePrompt.textContent = match.tossing ? "Click to serve!" : "🎾 Your serve — Press SPACE to toss";
-      servePrompt.className = "";
-    } else {
-      servePrompt.textContent = `Waiting for ${match.serverSlot} to serve…`;
-      servePrompt.className = "waiting";
-    }
-    servePrompt.style.display = "block";
+  if (m.serverSlot === selfSlot) {
+    servePrompt.replaceChildren(m.tossing ? "Click to serve" : "Press Space to toss");
   } else {
-    servePrompt.style.display = "none";
+    // The nickname is user input: textContent only.
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = names.get(m.serverSlot)?.name ?? m.serverSlot;
+    servePrompt.replaceChildren(who, " to serve");
   }
+  servePrompt.classList.add("show");
 }
 
 function maybeFlash(): void {
@@ -368,13 +334,14 @@ const net = new Net({
       names.set(p.slot, { name: p.name, team: p.team });
       scene.setPlayerName(p.slot, p.name);
     }
-    renderServing();
+    renderServePrompt();
     renderBoards();
   },
   onMatch: (msg) => {
+    scoreBug.render(bugModel(msg, match));
     match = msg;
     trackHintPhase(msg.phase);
-    renderScoreboard();
+    renderServePrompt();
     renderBoards();
     onMatchEvent(msg);
     maybeFlash();
