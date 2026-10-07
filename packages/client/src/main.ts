@@ -426,6 +426,38 @@ function updateReactions(framePos: Map<string, { x: number; z: number }>): void 
 renderHud();
 
 scene.start((dt) => {
+  // Input and fixed-step sends run first so this frame's applyInput is already
+  // reflected in the predicted position sampled below. Aim uses last frame's ownPos.
+  if (input) {
+    const i = input.poll();
+    // A click between ticks must still reach the next tick.
+    carrySwing ||= i.swing;
+    carryServe ||= i.serve;
+    const aim =
+      ownPos !== null
+        ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
+        : { x: 0, z: selfTeam === "A" ? 1 : -1 };
+    if (aim.x !== 0 || aim.z !== 0) selfYaw = Math.atan2(aim.x, aim.z);
+    const { steps, accumulator } = fixedSteps(stepAccum, dt);
+    stepAccum = accumulator;
+    for (let k = 0; k < steps; k++) {
+      const msg: InputMsg = {
+        t: "input",
+        seq: inputSeq++,
+        ts: performance.now(),
+        move: i.move,
+        aim,
+        swing: carrySwing,
+        serve: carryServe,
+      };
+      carrySwing = false;
+      carryServe = false;
+      net.send(msg);
+      predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
+    }
+    if (i.swing && selfSlot) scene.triggerSwing(selfSlot);
+  }
+
   interp.update(dt * 1000);
   const s = interp.sample();
   const framePos = new Map<string, { x: number; z: number }>();
@@ -456,36 +488,6 @@ scene.start((dt) => {
     }
   }
   updateReactions(framePos);
-
-  if (input) {
-    const i = input.poll();
-    // A click between ticks must still reach the next tick.
-    carrySwing ||= i.swing;
-    carryServe ||= i.serve;
-    const aim =
-      ownPos !== null
-        ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
-        : { x: 0, z: selfTeam === "A" ? 1 : -1 };
-    if (aim.x !== 0 || aim.z !== 0) selfYaw = Math.atan2(aim.x, aim.z);
-    const { steps, accumulator } = fixedSteps(stepAccum, dt);
-    stepAccum = accumulator;
-    for (let k = 0; k < steps; k++) {
-      const msg: InputMsg = {
-        t: "input",
-        seq: inputSeq++,
-        ts: performance.now(),
-        move: i.move,
-        aim,
-        swing: carrySwing,
-        serve: carryServe,
-      };
-      carrySwing = false;
-      carryServe = false;
-      net.send(msg);
-      predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
-    }
-    if (i.swing && selfSlot) scene.triggerSwing(selfSlot);
-  }
 });
 
 // ── Name labels above avatars ────────────────────────────────────────────────

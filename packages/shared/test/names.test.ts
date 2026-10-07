@@ -11,13 +11,23 @@ describe("sanitizeName", () => {
   });
 
   it("strips control and bidi-override characters", () => {
-    expect(sanitizeName("Ro\u0000g‮er\n", "F")).toBe("Roger");
+    expect(sanitizeName("Ro\u0000g\u202Eer\n", "F")).toBe("Roger");
   });
 
   it("caps at NAME_MAX_LENGTH code points without splitting emoji", () => {
     const out = sanitizeName("😀".repeat(40), "F");
     expect(Array.from(out)).toHaveLength(NAME_MAX_LENGTH);
     expect(out).toBe("😀".repeat(NAME_MAX_LENGTH));
+  });
+
+  it("strips zero-width characters", () => {
+    expect(sanitizeName("Ana\u200BLopez", "F")).toBe("AnaLopez");
+    expect(sanitizeName("\u200B\u200D\u2060\uFEFF", "Player c7")).toBe("Player c7");
+  });
+
+  it("re-trims after capping so no trailing space remains", () => {
+    const out = sanitizeName("A".repeat(15) + " xyz", "F");
+    expect(out).toBe("A".repeat(15));
   });
 
   it("falls back when nothing usable is left", () => {

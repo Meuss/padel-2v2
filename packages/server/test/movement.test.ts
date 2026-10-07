@@ -68,6 +68,19 @@ describe("server input queue", () => {
     room.stop();
   });
 
+  it("cannot exceed one step per tick on average by flooding inputs", async () => {
+    const { room, me } = await seatedRoom();
+    let seq = 0;
+    for (let i = 0; i < 60; i++) {
+      for (let k = 0; k < 4; k++) room.handleInput("p1", input(++seq, { x: 0, z: 1 }));
+      room.step();
+    }
+    const moved = me().pos.z - -5; // 60 steps: a snapshot went out on the last tick
+    expect(moved).toBeGreaterThan(0);
+    expect(moved).toBeLessThanOrEqual((60 + 3) * PLAYER.speed * TICK_DT + 1e-6);
+    room.stop();
+  });
+
   it("keeps the queue bounded when the client sends one input per tick", async () => {
     const { room, me } = await seatedRoom();
     let seq = 0;

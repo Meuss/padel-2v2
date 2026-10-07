@@ -23,7 +23,7 @@ export interface JoinMsg {
 }
 
 /**
- * Sent continuously (~30-60Hz) while playing. Spectators do not send these.
+ * Sent as exactly one per 60 Hz simulation tick while playing. Spectators do not send these.
  *
  * `move` is in the player's own frame, not world space: x = strafe (+ = the
  * player's right), z = forward (+ = toward the net). The server maps it to world
@@ -36,8 +36,8 @@ export interface InputMsg {
   ts: number; // client clock (ms) for diagnostics
   move: Vec2; // x = strafe, z = forward (player frame), components in [-1, 1]
   aim: Vec2; // normalized aim direction on the ground plane (world space)
-  swing: boolean; // true on the frame a swing is requested
-  serve: boolean; // true on the frame the serve is requested
+  swing: boolean; // true on the tick a swing is requested
+  serve: boolean; // true on the tick the serve is requested
 }
 
 /** Spawn an AI bot into a free slot (for testing / filling a match). */

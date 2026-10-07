@@ -64,6 +64,7 @@ interface PlayerSlot {
   input: InputMsg | null;
   inputQueue: InputMsg[]; // humans: one is consumed per tick, in order
   ack: number | undefined; // seq of the last input applied (humans)
+  stepCredit: number; // humans: token bucket limiting inputs consumed per second
   swingRequested: boolean;
   serveRequested: boolean;
   lastSwingMs: number;
@@ -89,6 +90,8 @@ const MAX_QUEUED_INPUTS = 8;
 const MAX_CATCHUP_STEPS = 5;
 /** A queue longer than this is drained two inputs per tick. */
 const DRAIN_THRESHOLD = 2;
+/** Most step credit a human can bank (also the burst size after a stall). */
+const MAX_STEP_CREDIT = 3;
 
 const TICKS_PER_SNAPSHOT = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_RATE));
 
@@ -204,6 +207,7 @@ export class Room {
       input: null,
       inputQueue: [],
       ack: undefined,
+      stepCredit: 0,
       swingRequested: false,
       serveRequested: false,
       lastSwingMs: 0,
@@ -427,11 +431,15 @@ export class Room {
         const move = ps.input ? ps.input.move : { x: 0, z: 0 };
         this.applyMove(ps, move, locked);
       } else {
-        const count = ps.inputQueue.length > DRAIN_THRESHOLD ? 2 : 1;
+        // Token bucket: +1 credit per tick (capped), -1 per consumed input, so a
+        // client flooding inputs cannot sustain more than one step per tick.
+        ps.stepCredit = Math.min(MAX_STEP_CREDIT, ps.stepCredit + 1);
         let consumed = false;
-        for (let k = 0; k < count; k++) {
+        for (let k = 0; k < 2 && ps.stepCredit >= 1; k++) {
+          if (k === 1 && ps.inputQueue.length <= DRAIN_THRESHOLD) break;
           const next = ps.inputQueue.shift();
           if (!next) break;
+          ps.stepCredit -= 1;
           consumed = true;
           ps.input = next;
           ps.ack = next.seq;

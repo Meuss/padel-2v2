@@ -76,3 +76,6 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
   loading screen covers the 30–60 s wake-up. Render's bundled pnpm is unpinned, so
   `buildCommand` runs `npx pnpm@<version>`. **Keep that version equal to
   `packageManager` in the root `package.json`.**
+- When `PROTOCOL_VERSION` changes, redeploy the server (Render) before or together
+  with the client (Pages). A newer client talking to an older server is rejected or
+  mispredicts, and old cached clients loop on reconnect until reloaded.
