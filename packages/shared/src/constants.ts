@@ -68,6 +68,27 @@ export const SERVE = {
   flightTime: 1.1, // seconds to reach the target bounce point (higher, clearing arc)
 } as const;
 
+export const SHOT = {
+  /** Ball height (m) at contact above which a swing becomes a Smash. */
+  smashHeight: 2.1,
+  /** |time to closest approach| (s) within which Timing is "perfect". */
+  perfectWindowS: 0.08,
+  drive: { power: 12.5, lift: 3.6 },
+  lob: { power: 7.0, lift: 9.5 },
+  smash: { power: 16.0, lift: -1.5 },
+  /** Multipliers applied for early/late Timing. */
+  offTiming: { power: 0.82, lift: 0.9, aimErrorDeg: 9 },
+} as const;
+
+export const TOSS = {
+  vy: 3.2, // m/s upward from SERVE.height
+  expireS: 0.75, // toss falls back below the hand → "Missed the toss"
+  perfectWindowS: 0.1, // |t - apex| for a clean serve
+  depthPerSecond: 14, // metres of depth error per second beyond the window (late → long, early → short)
+} as const;
+
+export const LAG = { maxRewindMs: 250, historyMs: 600 } as const;
+
 export const MATCH = {
   gamesToWinSet: 6,
   setWinBy: 2,
