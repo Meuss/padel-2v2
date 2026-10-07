@@ -13,6 +13,7 @@ import {
   TICK_DT,
   stepPlayer,
   swingConnects,
+  resolveKind,
   timeToClosest,
   tossApex,
   type InputMsg,
@@ -110,8 +111,11 @@ export function updateBots<S extends BotSeat>(ctx: BotContext<S>, now: number): 
         // A high ball in reach is smashed at once, whatever the timing roll.
         const smashable = ball.y > SHOT.smashHeight;
         if (smashable || timeToClosest(rel, vel) <= ps.botSwingAtS) {
-          ps.shotRequested = chooseBotShot(ps, seats, ctx.rng);
-          input.aim = botAim(ps, at, seats);
+          const shot = chooseBotShot(ps, seats, ctx.rng);
+          ps.shotRequested = shot;
+          // The room resolves the kind from this same ball (bots see the present).
+          const smash = resolveKind(shot, ball.y, Math.abs(ball.z)) === "smash";
+          input.aim = botAim(ps, at, seats, smash);
           ps.botArmed = false;
           ps.botSwingAtS = null;
           swinging.add(ps.team);
@@ -148,8 +152,11 @@ function chooseBotShot(ps: BotSeat, seats: readonly BotSeat[], rng: Rng): "drive
   return atNet || rng() < BOT.lobChance ? "lob" : "drive";
 }
 
-/** Aim into the opposite half, toward the open side: away from the nearest opponent's x. */
-function botAim(ps: BotSeat, from: Vec2, seats: readonly BotSeat[]): Vec2 {
+/**
+ * Aim into the opposite half, toward the open side: away from the nearest opponent's x. A Smash
+ * keeps to the middle (|x| <= BOT.smashMaxX), so a fast flat ball doesn't reach the side glass on the full.
+ */
+function botAim(ps: BotSeat, from: Vec2, seats: readonly BotSeat[], smash: boolean): Vec2 {
   let nearest: BotSeat | null = null;
   let best = Infinity;
   for (const p of seats) {
@@ -160,7 +167,8 @@ function botAim(ps: BotSeat, from: Vec2, seats: readonly BotSeat[]): Vec2 {
       nearest = p;
     }
   }
-  const targetX = nearest === null ? 0 : nearest.pos.x >= 0 ? -BOT.aimMaxX : BOT.aimMaxX;
+  const maxX = smash ? BOT.smashMaxX : BOT.aimMaxX;
+  const targetX = nearest === null ? 0 : nearest.pos.x >= 0 ? -maxX : maxX;
   const targetZ = -ps.side * COURT.length * BOT.aimDepthFrac;
   const dx = targetX - from.x;
   const dz = targetZ - from.z;

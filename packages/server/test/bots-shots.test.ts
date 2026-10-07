@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TICK_RATE, type MatchMsg, type ShotEvent, type SnapshotMsg, type Team } from "@padel/shared";
+import { TICK_RATE, type MatchMsg, type ShotEvent, type ShotKind, type SnapshotMsg, type Team } from "@padel/shared";
 import { Room } from "../src/room.js";
 import { fakeClient } from "./fakes.js";
 
@@ -29,15 +29,23 @@ async function botMatch(seed: number, seconds: number) {
     .flatMap((s) => s.shots ?? []);
   // A point ends on the first match message entering "between" or "over"; its winner is the
   // team whose score went up since the previous point ended.
-  const points: { winner: Team; reason: string | null }[] = [];
+  // `lastShot` is the kind of the last Shot struck before the point ended.
+  const points: { winner: Team; reason: string | null; lastShot: ShotKind | null }[] = [];
   let phase = "";
   let before: MatchMsg | null = null;
-  for (const m of messages.filter((m): m is MatchMsg => m.t === "match")) {
+  let lastShot: ShotKind | null = null;
+  for (const m of messages) {
+    if (m.t === "snapshot") {
+      for (const s of m.shots ?? []) lastShot = s.kind;
+      continue;
+    }
+    if (m.t !== "match") continue;
     const ended = (m.phase === "between" || m.phase === "over") && phase !== m.phase;
     if (ended && before) {
       const winner: Team = scoreOf(m, "A") > scoreOf(before, "A") ? "A" : "B";
-      points.push({ winner, reason: m.reason });
+      points.push({ winner, reason: m.reason, lastShot });
     }
+    if (ended) lastShot = null;
     if (m.phase === "serve") before = m;
     phase = m.phase;
   }
@@ -65,6 +73,17 @@ describe("bots use every shot with imperfect timing", () => {
       if (shots.some((s) => s.kind === "smash")) withSmash++;
     }
     expect(withSmash).toBeGreaterThanOrEqual(3);
+  }, LONG_TEST_MS);
+
+  it("bot Smashes go down the middle: none of 5 seeded matches ends a point on the glass on the full", async () => {
+    let smashes = 0;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const { shots, points } = await botMatch(seed, 120);
+      smashes += shots.filter((s) => s.kind === "smash").length;
+      const afterSmash = points.filter((p) => p.lastShot === "smash");
+      expect(afterSmash.filter((p) => p.reason?.startsWith("Hit the wall on the full"))).toEqual([]);
+    }
+    expect(smashes).toBeGreaterThan(0);
   }, LONG_TEST_MS);
 
   it("the same seed plays the same match", async () => {

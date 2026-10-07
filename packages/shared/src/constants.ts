@@ -110,6 +110,8 @@ export const BOT = {
   netZoneM: 4,
   /** Furthest |x| (m) a bot aims at. */
   aimMaxX: 3.5,
+  /** Furthest |x| (m) a bot aims a Smash at: down the middle. */
+  smashMaxX: 1.5,
   /** Bots aim this fraction of the court length deep: the middle of the opposite half. */
   aimDepthFrac: 0.25,
   /** An off-timed swing is this many perfect windows (SHOT.perfectWindowS) early or late. */
