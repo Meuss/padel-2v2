@@ -33,6 +33,7 @@ import {
   type Slot,
   type SnapshotMsg,
   type Team,
+  type Vec2,
   type VoteMsg,
 } from "@padel/shared";
 import { MatchEngine } from "./match.js";
@@ -84,6 +85,10 @@ const IDLE_KICK_MS = 60_000;
 const VOTE_TIMEOUT_MS = 30_000;
 /** Max inputs buffered per player (~133 ms at 60 Hz); older ones are dropped. */
 const MAX_QUEUED_INPUTS = 8;
+/** Longest backlog (ticks) the loop catches up on in one timer callback. */
+const MAX_CATCHUP_STEPS = 5;
+/** A queue longer than this is drained two inputs per tick. */
+const DRAIN_THRESHOLD = 2;
 
 const TICKS_PER_SNAPSHOT = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_RATE));
 
@@ -109,7 +114,22 @@ export class Room {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.step(), TICK_MS);
+    // Drift-free: setInterval alone runs slower than TICK_MS, so run however
+    // many ticks are due by the wall clock (capped so a stall cannot spiral).
+    let last = performance.now();
+    let acc = 0;
+    this.timer = setInterval(() => {
+      const now = performance.now();
+      acc += now - last;
+      last = now;
+      let steps = Math.floor(acc / TICK_MS);
+      acc -= steps * TICK_MS;
+      if (steps > MAX_CATCHUP_STEPS) {
+        steps = MAX_CATCHUP_STEPS;
+        acc = 0;
+      }
+      for (let i = 0; i < steps; i++) this.step();
+    }, TICK_MS);
   }
 
   stop(): void {
@@ -376,8 +396,9 @@ export class Room {
     this.placeServeAvatars();
 
     this.tick++;
-    if (this.tick % TICKS_PER_SNAPSHOT === 0) this.broadcastSnapshot();
+    // Match first: a snapshot on an ends-swap tick must be read with the new sides.
     if (this.match.consumeDirty()) this.broadcastMatch();
+    if (this.tick % TICKS_PER_SNAPSHOT === 0) this.broadcastSnapshot();
     if (this.tick % 15 === 0) this.maintainSession(); // ~4×/s
   }
 
@@ -397,28 +418,38 @@ export class Room {
   private integratePlayers(): void {
     const server = this.match.currentServer;
     for (const ps of this.slots.values()) {
-      // Humans consume exactly one queued input per tick and do NOT move when
-      // the queue is empty, so the client can replay the same steps exactly.
-      // Bots write `ps.input` directly every tick.
-      let move = { x: 0, z: 0 };
+      // Humans consume one queued input per tick (two when the queue has
+      // backed up) and do NOT move when it is empty. Each input is exactly one
+      // stepPlayer call, so the client can replay the same steps. Bots write
+      // `ps.input` directly every tick.
+      const locked = this.match.phase === "serve" && ps.slot === server;
       if (ps.isBot) {
-        if (ps.input) move = ps.input.move;
+        const move = ps.input ? ps.input.move : { x: 0, z: 0 };
+        this.applyMove(ps, move, locked);
       } else {
-        const next = ps.inputQueue.shift();
-        if (next) {
+        const count = ps.inputQueue.length > DRAIN_THRESHOLD ? 2 : 1;
+        let consumed = false;
+        for (let k = 0; k < count; k++) {
+          const next = ps.inputQueue.shift();
+          if (!next) break;
+          consumed = true;
           ps.input = next;
           ps.ack = next.seq;
-          move = next.move;
+          this.applyMove(ps, next.move, locked);
         }
+        if (!consumed) this.applyMove(ps, { x: 0, z: 0 }, locked);
       }
       const aim = ps.input?.aim;
       if (aim && (aim.x !== 0 || aim.z !== 0)) ps.yaw = Math.atan2(aim.x, aim.z);
-      // The serving player is locked at the serve spot until they serve.
-      if (this.match.phase === "serve" && ps.slot === server) continue;
-      const p = stepPlayer(ps.pos, move, ps.side, TICK_DT);
-      ps.pos.x = p.x;
-      ps.pos.z = p.z;
     }
+  }
+
+  /** The serving player is locked at the serve spot until they serve. */
+  private applyMove(ps: PlayerSlot, move: Vec2, locked: boolean): void {
+    if (locked) return;
+    const p = stepPlayer(ps.pos, move, ps.side, TICK_DT);
+    ps.pos.x = p.x;
+    ps.pos.z = p.z;
   }
 
   private resolveSwings(now: number): void {

@@ -58,4 +58,24 @@ describe("server input queue", () => {
     expect(p.last("snapshot")!.players).toHaveLength(1);
     room.stop();
   });
+
+  it("drains a backed-up queue and applies every input exactly once", async () => {
+    const { room, me } = await seatedRoom();
+    for (let seq = 1; seq <= 6; seq++) room.handleInput("p1", input(seq, { x: 0, z: 1 }));
+    for (let i = 0; i < 3; i++) room.step(); // two inputs per tick while the queue is > 2
+    expect(me().ack).toBe(6);
+    expect(me().pos.z).toBeCloseTo(-5 + 6 * PLAYER.speed * TICK_DT, 6);
+    room.stop();
+  });
+
+  it("keeps the queue bounded when the client sends one input per tick", async () => {
+    const { room, me } = await seatedRoom();
+    let seq = 0;
+    for (let i = 1; i <= 300; i++) {
+      room.handleInput("p1", input(++seq, { x: 1, z: 0 }));
+      room.step();
+      if (i % 3 === 0) expect(seq - me().ack!).toBeLessThanOrEqual(3);
+    }
+    room.stop();
+  });
 });
