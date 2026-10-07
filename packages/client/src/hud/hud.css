@@ -1,0 +1,460 @@
+/*
+ * Broadcast HUD: design tokens and shared primitives (Pro Tour Broadcast).
+ * Every HUD module draws its colour, type and spacing from here.
+ */
+
+:root {
+  /* Graphics: navy panels, white type. --azul, --rojo and --optic match world/palette.ts (test/hud-tokens.test.ts). */
+  --bug-navy: #0f1a33;
+  --bug-navy-2: #16244a;
+  --bug-white: #f4f7ff;
+  --bug-ink: #0b1020;
+  --azul: #62b0ff;
+  --rojo: #d8383a;
+  /* Serve dot and thin accent rules only. */
+  --optic: #e4f23a;
+
+  --font-broadcast: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Condensed type scale, 1280×720 → 2560×1440. */
+  --t-xs: clamp(13px, 0.95vw, 20px);
+  --t-sm: clamp(14px, 1vw, 22px);
+  --t-md: clamp(18px, 1.35vw, 30px);
+  --t-lg: clamp(24px, 2vw, 44px);
+  --t-xl: clamp(44px, 4.4vw, 92px);
+
+  /* Edge inset for anchored graphics, and the panel shadow. */
+  --hud-inset: clamp(12px, 1.6vh, 28px);
+  --hud-shadow: 0 6px 18px rgba(3, 6, 14, 0.5);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::selection {
+  background: var(--azul);
+  color: var(--bug-ink);
+}
+
+/* ── Primitives ───────────────────────────────────────────────────────────── */
+
+/** Base of every broadcast graphic: a flat navy plate with condensed caps and tabular digits. */
+.bug-panel {
+  background: var(--bug-navy);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  border-radius: 2px;
+  box-shadow: var(--hud-shadow);
+}
+
+/** A quiet secondary control: outline only, fills on hover. */
+.ghost-btn {
+  appearance: none;
+  padding: 0.45em 0.9em;
+  background: rgba(11, 16, 32, 0.35);
+  border: 1px solid rgba(244, 247, 255, 0.3);
+  border-radius: 2px;
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out);
+}
+.ghost-btn:hover {
+  background: var(--bug-navy);
+  border-color: rgba(244, 247, 255, 0.65);
+}
+.ghost-btn:active {
+  background: var(--bug-navy-2);
+}
+.ghost-btn:focus-visible {
+  outline: 2px solid var(--bug-white);
+  outline-offset: 2px;
+}
+
+/* ── Chrome: connection, watching, controls ───────────────────────────────── */
+
+/** Top-left, only while the socket is not open. */
+#conn {
+  position: fixed;
+  top: var(--hud-inset);
+  left: var(--hud-inset);
+  display: none;
+  align-items: center;
+  gap: 0.55em;
+  padding: 0.5em 0.8em;
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+#conn.show {
+  display: flex;
+}
+#conn .dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--rojo);
+  animation: conn-pulse 1.2s ease-in-out infinite;
+}
+@keyframes conn-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/** Top-right column: watching pill, then the small controls under it. */
+#topright {
+  position: fixed;
+  top: var(--hud-inset);
+  right: var(--hud-inset);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+#watching {
+  display: none;
+  align-items: baseline;
+  gap: 0.35em;
+  padding: 0.45em 0.9em;
+  border-radius: 999px;
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+#watching.show {
+  display: inline-flex;
+}
+#watching .n {
+  font-weight: 700;
+}
+#watching .label {
+  color: rgba(244, 247, 255, 0.72);
+}
+
+#resetbtn {
+  display: none;
+}
+#resetbtn.show {
+  display: inline-block;
+}
+
+#mutebtn {
+  min-width: 2.4em;
+  padding: 0.3em 0.5em;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  line-height: 1;
+}
+
+/** One quiet line of controls, bottom-centre; fades for good after the first serve or 12 s. */
+#hint {
+  position: fixed;
+  bottom: var(--hud-inset);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2 * var(--hud-inset));
+  color: rgba(244, 247, 255, 0.78);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(3, 6, 14, 0.9);
+  pointer-events: none;
+  display: none;
+  opacity: 1;
+  transition: opacity 900ms var(--ease-out);
+}
+#hint.show {
+  display: block;
+}
+#hint.faded {
+  opacity: 0;
+}
+#hint kbd {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--bug-white);
+}
+#hint .sep {
+  margin: 0 0.6em;
+  opacity: 0.45;
+}
+
+/* ── V1 elements, kept working until Tasks 3–6 replace them ───────────────── */
+
+#labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+#labels .nametag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(8, 12, 28, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+#labels .nametag.A {
+  border-color: #4aa3ff;
+}
+#labels .nametag.B {
+  border-color: #ff6b6b;
+}
+
+#serving {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ffe08a;
+  font-size: 15px;
+  font-weight: 700;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  display: none;
+  pointer-events: none;
+}
+
+/* Lives in #topright, under the controls. */
+#votepanel {
+  width: 240px;
+  padding: 12px 14px;
+  background: rgba(8, 12, 28, 0.92);
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  border-radius: 12px;
+  color: #eaf1ff;
+  font-size: 13px;
+  display: none;
+}
+#votepanel .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+#votepanel button {
+  flex: 1;
+  padding: 7px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#votepanel .accept {
+  background: #1f9d57;
+  color: #fff;
+}
+#votepanel .decline {
+  background: #b23b3b;
+  color: #fff;
+}
+
+#nickname {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 20, 0.82);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+#nickname .card {
+  background: rgba(14, 20, 40, 0.95);
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  border-radius: 16px;
+  padding: 28px 32px;
+  text-align: center;
+  width: 320px;
+}
+#nickname h1 {
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+#nickname p {
+  color: #aab8d8;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+#nickname input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  background: rgba(8, 12, 28, 0.8);
+  color: #fff;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+#nickname button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#nickname button:hover {
+  background: #2f6fd8;
+}
+#nick-msg {
+  color: #ff9a8f;
+  font-size: 13px;
+  margin-top: 10px;
+  min-height: 16px;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 20, 0.92);
+  backdrop-filter: blur(8px);
+  z-index: 11;
+}
+#loading.show {
+  display: flex;
+}
+#loading .card {
+  background: rgba(14, 20, 40, 0.95);
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  border-radius: 16px;
+  padding: 32px 36px;
+  text-align: center;
+  width: 380px;
+  max-width: calc(100% - 32px);
+}
+#loading .spinner {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 20px;
+  border: 4px solid rgba(120, 160, 255, 0.22);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+#loading h1 {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+#loading p {
+  color: #aab8d8;
+  font-size: 14px;
+  line-height: 1.55;
+}
+#loading .hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #7d8db0;
+  min-height: 14px;
+}
+
+#scoreboard {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(8, 12, 28, 0.78);
+  border: 1px solid rgba(120, 160, 255, 0.25);
+  border-radius: 10px;
+  color: #eaf1ff;
+  font-size: 15px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  white-space: nowrap;
+}
+#scoreboard .team {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+#scoreboard .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+#scoreboard .blue {
+  color: #6db0ff;
+}
+#scoreboard .red {
+  color: #ff8a8a;
+}
+#scoreboard .pts {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.95;
+}
+#scoreboard .serving {
+  font-size: 11px;
+  opacity: 0.7;
+}
+#scoreboard:empty {
+  display: none;
+}
+
+#flash {
+  position: fixed;
+  top: 33%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+}
+#flash.show {
+  opacity: 1;
+}
+
+#serveprompt {
+  position: fixed;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 18px;
+  background: rgba(20, 120, 70, 0.9);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  display: none;
+}
+#serveprompt.waiting {
+  background: rgba(40, 50, 80, 0.85);
+  font-weight: 500;
+}

@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Meuss Padel Club</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&display=swap"
+    />
+    <!-- Page shell and in-world overlays only; the HUD styles live in src/hud/hud.css. -->
     <style>
       :root {
         color-scheme: dark;
@@ -20,8 +27,7 @@
         height: 100%;
         overflow: hidden;
         background: #0b1020;
-        font-family:
-          system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       canvas {
         display: block;
@@ -29,31 +35,6 @@
           url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="9" fill="none" stroke="%23ff5566" stroke-width="2"/><circle cx="17" cy="17" r="2" fill="%23ff5566"/><path d="M17 1v7M17 26v7M1 17h7M26 17h7" stroke="%23ff5566" stroke-width="2"/></svg>')
             17 17,
           crosshair;
-      }
-      #labels {
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      #labels .nametag {
-        position: absolute;
-        transform: translate(-50%, -100%);
-        padding: 2px 8px;
-        border-radius: 8px;
-        font-size: 12px;
-        font-weight: 700;
-        color: #fff;
-        background: rgba(8, 12, 28, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        white-space: nowrap;
-        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-      }
-      #labels .nametag.A {
-        border-color: #4aa3ff;
-      }
-      #labels .nametag.B {
-        border-color: #ff6b6b;
       }
       #reactions {
         position: fixed;
@@ -78,18 +59,6 @@
           transform: translate(-50%, -100%) scale(1);
           opacity: 1;
         }
-      }
-      #serving {
-        position: fixed;
-        top: 52px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: #ffe08a;
-        font-size: 15px;
-        font-weight: 700;
-        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-        display: none;
-        pointer-events: none;
       }
       #reactbar {
         position: fixed;
@@ -117,310 +86,6 @@
       #reactbar img:hover {
         transform: scale(1.15);
       }
-      #resetbtn {
-        position: fixed;
-        top: 12px;
-        right: 12px;
-        padding: 8px 14px;
-        background: rgba(40, 50, 80, 0.85);
-        border: 1px solid rgba(120, 160, 255, 0.3);
-        border-radius: 10px;
-        color: #cfe0ff;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        display: none;
-        user-select: none;
-        backdrop-filter: blur(6px);
-      }
-      #resetbtn:hover {
-        background: rgba(60, 75, 115, 0.95);
-      }
-      #mutebtn {
-        position: fixed;
-        top: 52px;
-        right: 12px;
-        width: 38px;
-        height: 32px;
-        padding: 0;
-        background: rgba(40, 50, 80, 0.85);
-        border: 1px solid rgba(120, 160, 255, 0.3);
-        border-radius: 10px;
-        color: #cfe0ff;
-        font-size: 15px;
-        line-height: 30px;
-        cursor: pointer;
-        user-select: none;
-        backdrop-filter: blur(6px);
-      }
-      #mutebtn:hover {
-        background: rgba(60, 75, 115, 0.95);
-      }
-      #votepanel {
-        position: fixed;
-        top: 92px;
-        right: 12px;
-        width: 240px;
-        padding: 12px 14px;
-        background: rgba(8, 12, 28, 0.92);
-        border: 1px solid rgba(120, 160, 255, 0.35);
-        border-radius: 12px;
-        color: #eaf1ff;
-        font-size: 13px;
-        display: none;
-        backdrop-filter: blur(8px);
-      }
-      #votepanel .actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 10px;
-      }
-      #votepanel button {
-        flex: 1;
-        padding: 7px;
-        border: none;
-        border-radius: 8px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      #votepanel .accept {
-        background: #1f9d57;
-        color: #fff;
-      }
-      #votepanel .decline {
-        background: #b23b3b;
-        color: #fff;
-      }
-      #nickname {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(6, 9, 20, 0.82);
-        backdrop-filter: blur(8px);
-        z-index: 10;
-      }
-      #nickname .card {
-        background: rgba(14, 20, 40, 0.95);
-        border: 1px solid rgba(120, 160, 255, 0.3);
-        border-radius: 16px;
-        padding: 28px 32px;
-        text-align: center;
-        width: 320px;
-      }
-      #nickname h1 {
-        font-size: 24px;
-        margin-bottom: 6px;
-      }
-      #nickname p {
-        color: #aab8d8;
-        font-size: 14px;
-        margin-bottom: 16px;
-      }
-      #nickname input {
-        width: 100%;
-        padding: 11px 14px;
-        border-radius: 10px;
-        border: 1px solid rgba(120, 160, 255, 0.35);
-        background: rgba(8, 12, 28, 0.8);
-        color: #fff;
-        font-size: 15px;
-        margin-bottom: 12px;
-      }
-      #nickname button {
-        width: 100%;
-        padding: 12px;
-        border: none;
-        border-radius: 10px;
-        background: #3b82f6;
-        color: #fff;
-        font-size: 15px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      #nickname button:hover {
-        background: #2f6fd8;
-      }
-      #nick-msg {
-        color: #ff9a8f;
-        font-size: 13px;
-        margin-top: 10px;
-        min-height: 16px;
-      }
-      #loading {
-        position: fixed;
-        inset: 0;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        background: rgba(6, 9, 20, 0.92);
-        backdrop-filter: blur(8px);
-        z-index: 11;
-      }
-      #loading.show {
-        display: flex;
-      }
-      #loading .card {
-        background: rgba(14, 20, 40, 0.95);
-        border: 1px solid rgba(120, 160, 255, 0.3);
-        border-radius: 16px;
-        padding: 32px 36px;
-        text-align: center;
-        width: 380px;
-        max-width: calc(100% - 32px);
-      }
-      #loading .spinner {
-        width: 46px;
-        height: 46px;
-        margin: 0 auto 20px;
-        border: 4px solid rgba(120, 160, 255, 0.22);
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 0.9s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      #loading h1 {
-        font-size: 20px;
-        margin-bottom: 10px;
-      }
-      #loading p {
-        color: #aab8d8;
-        font-size: 14px;
-        line-height: 1.55;
-      }
-      #loading .hint {
-        margin-top: 16px;
-        font-size: 12px;
-        color: #7d8db0;
-        min-height: 14px;
-      }
-      #hud {
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        padding: 10px 14px;
-        background: rgba(8, 12, 28, 0.72);
-        border: 1px solid rgba(120, 160, 255, 0.25);
-        border-radius: 10px;
-        color: #cfe0ff;
-        font-size: 13px;
-        line-height: 1.5;
-        pointer-events: none;
-        backdrop-filter: blur(6px);
-      }
-      #hud .role {
-        font-weight: 600;
-        color: #8fd0ff;
-      }
-      #hud .status-bad {
-        color: #ff9a8f;
-      }
-      #hud .status-good {
-        color: #93f5b0;
-      }
-      #hint {
-        position: fixed;
-        bottom: 14px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 8px 14px;
-        background: rgba(8, 12, 28, 0.72);
-        border: 1px solid rgba(120, 160, 255, 0.25);
-        border-radius: 999px;
-        color: #cfe0ff;
-        font-size: 12px;
-        display: none;
-        pointer-events: none;
-        backdrop-filter: blur(6px);
-      }
-      #hint strong {
-        color: #8fd0ff;
-      }
-      #scoreboard {
-        position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 8px 16px;
-        background: rgba(8, 12, 28, 0.78);
-        border: 1px solid rgba(120, 160, 255, 0.25);
-        border-radius: 10px;
-        color: #eaf1ff;
-        font-size: 15px;
-        display: flex;
-        gap: 18px;
-        align-items: center;
-        backdrop-filter: blur(6px);
-        white-space: nowrap;
-      }
-      #scoreboard .team {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        font-weight: 600;
-      }
-      #scoreboard .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-      }
-      #scoreboard .blue {
-        color: #6db0ff;
-      }
-      #scoreboard .red {
-        color: #ff8a8a;
-      }
-      #scoreboard .pts {
-        font-variant-numeric: tabular-nums;
-        opacity: 0.95;
-      }
-      #scoreboard .serving {
-        font-size: 11px;
-        opacity: 0.7;
-      }
-      #scoreboard:empty {
-        display: none;
-      }
-      #flash {
-        position: fixed;
-        top: 33%;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 34px;
-        font-weight: 800;
-        color: #fff;
-        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
-        opacity: 0;
-        transition: opacity 0.25s ease;
-        pointer-events: none;
-        letter-spacing: 0.5px;
-      }
-      #flash.show {
-        opacity: 1;
-      }
-      #serveprompt {
-        position: fixed;
-        bottom: 52px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 9px 18px;
-        background: rgba(20, 120, 70, 0.9);
-        border-radius: 999px;
-        color: #fff;
-        font-size: 14px;
-        font-weight: 600;
-        display: none;
-      }
-      #serveprompt.waiting {
-        background: rgba(40, 50, 80, 0.85);
-        font-weight: 500;
-      }
     </style>
   </head>
   <body>
@@ -429,12 +94,17 @@
     <div id="reactions"></div>
     <div id="serving"></div>
     <div id="reactbar"></div>
-    <div id="hud">connecting…</div>
-    <div id="resetbtn" title="Propose resetting the set (all players must accept)">
-      ↺ Reset set
+    <div id="conn" class="bug-panel" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span><span id="conn-label">Reconnecting…</span>
     </div>
-    <button id="mutebtn" type="button" title="Sound (M)" aria-label="Sound" aria-pressed="true"><span aria-hidden="true">🔊</span></button>
-    <div id="votepanel"></div>
+    <div id="topright">
+      <div id="watching" class="bug-panel"><span class="n" id="watching-n">0</span><span class="label">watching</span></div>
+      <button id="resetbtn" class="ghost-btn" type="button" title="Propose resetting the set (all players must accept)">
+        Reset set
+      </button>
+      <button id="mutebtn" class="ghost-btn" type="button" title="Sound (M)" aria-label="Sound" aria-pressed="true"><span aria-hidden="true">🔊</span></button>
+      <div id="votepanel"></div>
+    </div>
     <div id="nickname">
       <div class="card">
         <h1>Meuss Padel Club</h1>
@@ -460,9 +130,7 @@
     <div id="flash"></div>
     <div id="serveprompt"></div>
     <div id="hint">
-      <strong>WASD</strong> move · point the <strong>mouse</strong> where to hit ·
-      <strong>click</strong> Drive · <strong>right-click</strong> Lob · <strong>Space</strong> to toss the serve ·
-      <strong>E</strong> react · <strong>M</strong> mute
+      <kbd>WASD</kbd> move<span class="sep">·</span><kbd>Mouse</kbd> aim<span class="sep">·</span><kbd>Click</kbd> Drive<span class="sep">·</span><kbd>Right-click</kbd> Lob<span class="sep">·</span><kbd>Space</kbd> serve<span class="sep">·</span><kbd>E</kbd> react<span class="sep">·</span><kbd>M</kbd> mute<span class="sep">·</span><kbd>B</kbd>/<kbd>N</kbd> add/clear bots
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

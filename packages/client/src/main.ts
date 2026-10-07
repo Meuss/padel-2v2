@@ -28,9 +28,13 @@ import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
+import "./hud/hud.css";
 
 const app = document.getElementById("app")!;
-const hud = document.getElementById("hud")!;
+const conn = document.getElementById("conn")!;
+const connLabel = document.getElementById("conn-label")!;
+const watching = document.getElementById("watching")!;
+const watchingN = document.getElementById("watching-n")!;
 const hint = document.getElementById("hint")!;
 const scoreboard = document.getElementById("scoreboard")!;
 const flash = document.getElementById("flash")!;
@@ -98,39 +102,37 @@ let flashTimer: number | undefined;
 const names = new Map<Slot, { name: string; team: Team }>();
 const tags = new Map<Slot, HTMLDivElement>();
 
-const state = {
-  status: "idle" as ConnStatus | "idle",
-  role: "—",
-  slot: "" as string,
-  players: 0,
-  spectators: 0,
-};
+/** Connection indicator, top-left: shown only while the socket is not open. */
+function renderConn(status: ConnStatus): void {
+  const label =
+    status === "connecting" ? "Connecting…" : status === "reconnecting" ? "Reconnecting…" : status === "closed" ? "Offline" : null;
+  if (label) connLabel.textContent = label;
+  conn.classList.toggle("show", label !== null);
+}
 
-function renderHud(): void {
-  const statusClass = state.status === "open" ? "status-good" : "status-bad";
-  const statusLabel =
-    state.status === "open"
-      ? "connected"
-      : state.status === "connecting"
-        ? "connecting…"
-        : state.status === "reconnecting"
-          ? "server waking up / reconnecting…"
-          : "—";
-  hud.innerHTML = `
-    <div>🎾 <strong>Meuss Padel Club</strong></div>
-    <div>status: <span class="${statusClass}">${statusLabel}</span></div>
-    <div>you: <span class="role">${state.role}${
-      state.slot ? ` (${state.slot})` : ""
-    }</span></div>
-    <div>players: ${state.players}/4 · spectators: ${state.spectators}</div>
-    ${
-      state.role === "player"
-        ? `<div style="margin-top:4px;opacity:.7;font-size:12px">
-      <strong>B</strong> add bot · <strong>N</strong> clear bots
-    </div>`
-        : ""
-    }
-  `;
+/** "N watching" pill, top-right: the spectator count, hidden when there are none. */
+function renderWatching(spectators: number): void {
+  watchingN.textContent = String(spectators);
+  watching.classList.toggle("show", spectators > 0);
+}
+
+/** How long the controls hint stays up when nobody serves. */
+const HINT_MS = 12_000;
+let hintTimer: number | undefined;
+let hintDone = false;
+
+/** Show the controls hint to a new player; it fades for good after the first serve or HINT_MS. */
+function showHint(): void {
+  if (hintDone) return;
+  hint.classList.add("show");
+  window.clearTimeout(hintTimer);
+  hintTimer = window.setTimeout(fadeHint, HINT_MS);
+}
+
+function fadeHint(): void {
+  hintDone = true;
+  window.clearTimeout(hintTimer);
+  hint.classList.add("faded");
 }
 
 function teamOfSlot(slot: Slot | null): Team | null {
@@ -310,10 +312,9 @@ function hideLoading(): void {
 
 const net = new Net({
   onStatus: (s) => {
-    state.status = s;
+    renderConn(s);
     if (s === "closed") hideLoading();
     else showLoading(s);
-    renderHud();
   },
   onWelcome: (msg) => {
     predictor.reset();
@@ -323,8 +324,6 @@ const net = new Net({
     stepAccum = 0;
     hideLoading();
     role = msg.role;
-    state.role = msg.role;
-    state.slot = msg.slot ?? "";
     scene.buildCourt(msg.court);
     if (msg.role === "player" && msg.slot && msg.team) {
       selfSlot = msg.slot;
@@ -332,36 +331,34 @@ const net = new Net({
       scene.setPlayerCamera(msg.team);
       input?.dispose();
       input = new Input(scene.domElement);
-      hint.style.display = "block";
-      resetbtn.style.display = "block";
+      showHint();
+      resetbtn.classList.add("show");
     } else {
       input?.dispose();
       input = null;
       selfSlot = null;
       scene.setSpectatorCamera();
-      hint.style.display = "none";
-      resetbtn.style.display = "none";
+      hint.classList.remove("show");
+      resetbtn.classList.remove("show");
     }
     if (msg.role === "player" && devBots > 0) {
       for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
       devBots = 0;
     }
-    renderHud();
   },
   onRoster: (msg) => {
-    state.players = msg.players.length;
-    state.spectators = msg.spectatorCount;
+    renderWatching(msg.spectatorCount);
     names.clear();
     for (const p of msg.players) {
       names.set(p.slot, { name: p.name, team: p.team });
       scene.setPlayerName(p.slot, p.name);
     }
-    renderHud();
     renderServing();
     renderBoards();
   },
   onMatch: (msg) => {
     match = msg;
+    if (msg.phase === "rally" && hint.classList.contains("show")) fadeHint();
     renderScoreboard();
     renderBoards();
     onMatchEvent(msg);
@@ -404,7 +401,7 @@ function showNickname(message = ""): void {
   hideLoading();
   nickMsg.textContent = message;
   nickname.style.display = "flex";
-  resetbtn.style.display = "none";
+  resetbtn.classList.remove("show");
   votepanel.style.display = "none";
   nickInput.focus();
 }
@@ -423,7 +420,11 @@ nickGo.addEventListener("click", play);
 nickInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") play();
 });
-resetbtn.addEventListener("click", () => net.send({ t: "votereset" }));
+resetbtn.addEventListener("click", (e) => {
+  net.send({ t: "votereset" });
+  // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
+  if (e.detail > 0) resetbtn.blur();
+});
 
 // ── Sound: unlocked by the first gesture, M or the HUD button toggles mute ───
 
@@ -598,8 +599,6 @@ function playEvents(
 }
 
 // ── Render / input loop ──────────────────────────────────────────────────────
-
-renderHud();
 
 scene.start((dt) => {
   // Input and fixed-step sends run first so this frame's applyInput is already
