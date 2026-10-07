@@ -89,7 +89,9 @@ let input: Input | null = null;
 let role: Role = "spectator";
 let selfSlot: Slot | null = null;
 let selfTeam: Team | null = null;
+/** Our rendered position (last frame), or null before the first: points at the reused `ownPoint`. */
 let ownPos: { x: number; z: number } | null = null;
+const ownPoint = { x: 0, z: 0 };
 let inputSeq = 0;
 const predictor = new Predictor();
 let stepAccum = 0;
@@ -348,7 +350,6 @@ function syncReplay(now: number): void {
   replayShown = on;
   if (on && director.mode === "replay") replayPlayer.start(director.fromMs);
   scene.setReplay(on);
-  replayTag.classList.toggle("skippable", role === "player");
   document.body.classList.toggle("replaying", on);
 }
 
@@ -384,12 +385,17 @@ const net = new Net({
     interp.reset();
     events.clear();
     recorder.reset();
+    // Forget the old match state too: the first update after a (re)connect never counts as a
+    // point end, so a near-empty recording is never replayed.
+    match = null;
     director = { mode: "live" };
     syncReplay(performance.now());
     scene.resetFeedback();
     stepAccum = 0;
     hideLoading();
     role = msg.role;
+    // The skip key is for seated Players only.
+    replayTag.classList.toggle("skippable", role === "player");
     scene.buildCourt(msg.court);
     if (msg.role === "player" && msg.slot && msg.team) {
       selfSlot = msg.slot;
@@ -687,6 +693,28 @@ function playEvents(
 
 // ── Render / input loop ──────────────────────────────────────────────────────
 
+// Reused every frame, so the loop allocates no positions: each frame's avatar positions (for
+// the reactions), the slots in this snapshot, and one point per slot.
+const framePos = new Map<string, { x: number; z: number }>();
+const present = new Set<string>();
+const slotPoints = new Map<Slot, { x: number; z: number }>();
+
+/** The reused point for `slot`, set to (x, z). */
+function slotPoint(slot: Slot, x: number, z: number): { x: number; z: number } {
+  let pt = slotPoints.get(slot);
+  if (!pt) slotPoints.set(slot, (pt = { x: 0, z: 0 }));
+  pt.x = x;
+  pt.z = z;
+  return pt;
+}
+
+/** Set our rendered position (the reused `ownPoint`). */
+function setOwnPos(x: number, z: number): { x: number; z: number } {
+  ownPoint.x = x;
+  ownPoint.z = z;
+  return ownPoint;
+}
+
 scene.start((dt) => {
   // Input and fixed-step sends run first so this frame's applyInput is already
   // reflected in the predicted position sampled below. Aim uses last frame's ownPos.
@@ -720,7 +748,8 @@ scene.start((dt) => {
       net.send(msg);
       predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
     }
-    if (i.shot && selfSlot) scene.triggerSwing(selfSlot);
+    // During a replay our avatar shows recorded play: no live swing on it.
+    if (i.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
   }
 
   interp.update(dt * 1000);
@@ -729,11 +758,11 @@ scene.start((dt) => {
   syncReplay(now);
   events.drain(interp.renderTime, replayShown ? dropEvents : playEvents, EVENT_STALE_MS);
   const s = interp.sample();
-  const framePos = new Map<string, { x: number; z: number }>();
+  framePos.clear();
   if (replayShown && director.mode === "replay") {
     // Recorded play through the Broadcast cam; our predicted position keeps tracking live input.
     const predicted = predictor.renderPosition(dt);
-    if (predicted) ownPos = { x: predicted.x, z: predicted.z };
+    if (predicted) ownPos = setOwnPos(predicted.x, predicted.z);
     if (replayPlayer.advance(clipTime(director, now), playReplayEvents)) {
       const pose = replayPlayer.pose;
       scene.setBall(pose.ball.x, pose.ball.y, pose.ball.z);
@@ -749,7 +778,7 @@ scene.start((dt) => {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
     scene.setBallTarget(s.ball.x, s.ball.z);
     scene.setBallSide(s.ball.z);
-    const present = new Set<string>();
+    present.clear();
     const predicted = predictor.renderPosition(dt);
     for (const p of s.players) {
       present.add(p.slot);
@@ -757,11 +786,11 @@ scene.start((dt) => {
       const mine = p.slot === selfSlot && predicted !== null;
       const x = mine ? predicted.x : p.pos.x;
       const z = mine ? predicted.z : p.pos.z;
-      framePos.set(p.slot, { x, z });
+      framePos.set(p.slot, slotPoint(p.slot, x, z));
       scene.setPlayer(p.slot, x, p.pos.y, z, mine ? selfYaw : p.yaw);
       updateLabel(p.slot, x, z);
       if (p.slot === selfSlot) {
-        ownPos = { x, z };
+        ownPos = setOwnPos(x, z);
         scene.focusCamera(x, p.pos.y, z);
       }
     }
@@ -833,7 +862,7 @@ function sendDevInput(extra: Partial<InputMsg>): void {
   };
   net.send(msg);
   predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
-  if (msg.shot && selfSlot) scene.triggerSwing(selfSlot);
+  if (msg.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
 }
 
 /** Unit aim from the serve spot to the centre of the diagonal service box. */
