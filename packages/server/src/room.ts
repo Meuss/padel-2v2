@@ -11,12 +11,10 @@
 import type { WebSocket } from "ws";
 import {
   BALL,
-  BOT,
   COURT,
   LAG,
   PLAYER,
   REACTIONS,
-  SHOT,
   SNAPSHOT_RATE,
   SWING,
   TICK_DT,
@@ -30,7 +28,6 @@ import {
   stepPlayer,
   swingConnects,
   timeToClosest,
-  tossApex,
   type ContactEvent,
   type ContactSurface,
   type ReactionMsg,
@@ -48,6 +45,7 @@ import {
   type Vec3,
   type VoteMsg,
 } from "@padel/shared";
+import { updateBots, type BotSeat } from "./bots.js";
 import { BallHistory, type BallSample } from "./history.js";
 import { MatchEngine } from "./match.js";
 import { mulberry32, type Rng } from "./rng.js";
@@ -91,7 +89,7 @@ const BOT_NAMES = [
   "Roger du Flon", "Toblerone",
 ];
 
-interface PlayerSlot {
+interface PlayerSlot extends BotSeat {
   clientId: string;
   name: string;
   slot: Slot;
@@ -104,17 +102,12 @@ interface PlayerSlot {
   ack: number | undefined; // seq of the last input applied (humans)
   stepCredit: number; // humans: token bucket limiting inputs consumed per second
   starvedTicks: number; // humans: consecutive ticks that found the input queue empty
-  /** Shot requested since the last tick that consumed it (captured on arrival). */
+  /** Shot requested since the last tick that consumed it (captured on arrival; bots write it). */
   shotRequested: "drive" | "lob" | null;
   /** The `view` time of the input that requested it: the moment the player saw. */
   shotView: number;
   serveRequested: boolean;
   lastSwingMs: number;
-  isBot: boolean;
-  serveReadyAt: number;
-  botArmed: boolean; // ready to take one swing (re-armed when the ball leaves reach)
-  /** This approach's swing point, as a time-to-closest (s): 0 is perfect; rolled once per approach. */
-  botSwingAtS: number | null;
   lastReactionMs: number;
 }
 
@@ -481,7 +474,17 @@ export class Room {
     // Keep each player's defended side in sync with the match (handles swaps).
     for (const ps of this.slots.values()) ps.side = this.match.sideOf(ps.team);
 
-    this.updateBots(now);
+    updateBots(
+      {
+        seats: [...this.slots.values()],
+        ball: this.physics.ballState(),
+        lastHitTeam: this.lastHitTeam,
+        match: this.match,
+        rng: this.rng,
+        strikeServe: (ps, at, aimPoint) => this.strikeServe(ps, at, aimPoint),
+      },
+      now,
+    );
     this.integratePlayers();
     // After integration, so a strike uses the aim of the input applied this tick.
     this.handleServeRequests(now);
@@ -710,125 +713,6 @@ export class Room {
         { x: (Math.random() - 0.5) * 6, y: 0, z: (Math.random() - 0.5) * 12 },
       );
     }
-  }
-
-  /**
-   * Drive AI bots: hold a back-court lane, step to the ball only when it's a genuine incoming
-   * ball in their half, and serve on their turn. A bot swings once per approach, when the
-   * ball's time to closest approach reaches the swing point rolled for that approach: the
-   * centre of the perfect window, or (BOT.offTimingChance) one window early or late.
-   */
-  private updateBots(now: number): void {
-    const phase = this.match.phase;
-    const server = this.match.currentServer;
-    const { pos: ball, vel } = this.physics.ballState();
-    const halfL = COURT.length / 2;
-    const unit = (v: number) => clamp(v, -1, 1);
-    /** Teams with a bot swinging this tick: two teammates on one tick would be a double hit. */
-    const swinging = new Set<Team>();
-    for (const ps of this.slots.values()) {
-      if (!ps.isBot) continue;
-      const s = ps.side;
-      const laneX = ps.slot.endsWith("1") ? -2.5 : 2.5; // left vs right lane
-      const backZ = s * (halfL - 1.8); // home: near our own baseline
-      const teammates = [...this.slots.values()].filter((p) => p.team === ps.team).length;
-      const laneOk =
-        teammates <= 1 ? true : laneX < 0 ? ball.x <= 0.3 : ball.x >= -0.3;
-      const onOurSide = Math.sign(ball.z) === s;
-      const incoming = Math.sign(vel.z) === s; // ball travelling toward our court
-      const near = Math.hypot(ball.x - ps.pos.x, ball.z - ps.pos.z) < 3;
-      const chase = onOurSide && laneOk && (incoming || near);
-      // Target: the ball if it's ours to take, otherwise our back-court lane spot.
-      const tx = chase ? ball.x : laneX;
-      const tz = chase ? ball.z : backZ;
-      const input: InputMsg = {
-        t: "input",
-        seq: 0,
-        ts: now,
-        move: { x: unit((tx - ps.pos.x) * s), z: unit(-(tz - ps.pos.z) * s) },
-        aim: { x: unit(-ps.pos.x * 0.15), z: -s },
-        shot: null,
-        view: now, // bots see the present
-        serve: false,
-      };
-      ps.input = input;
-      // Only a ball on our side that the other team struck last is ours to swing at.
-      if (phase === "rally" && onOurSide && this.lastHitTeam !== ps.team) {
-        // Judge from where the bot will stand when the swing resolves: after this tick's move.
-        const at = stepPlayer(ps.pos, input.move, s, TICK_DT);
-        const racket = { x: at.x, y: PLAYER.racketHeight, z: at.z };
-        const inReach = swingConnects(racket.x, racket.y, racket.z, ball, PLAYER.reach + BALL.radius);
-        if (!inReach) {
-          ps.botArmed = true;
-          ps.botSwingAtS = null;
-        } else if (ps.botArmed && !swinging.has(ps.team)) {
-          ps.botSwingAtS ??= this.rollSwingAt();
-          const rel = { x: ball.x - racket.x, y: ball.y - racket.y, z: ball.z - racket.z };
-          // A high ball in reach is smashed at once, whatever the timing roll.
-          const smashable = ball.y > SHOT.smashHeight;
-          if (smashable || timeToClosest(rel, vel) <= ps.botSwingAtS) {
-            ps.shotRequested = this.chooseBotShot(ps);
-            input.aim = this.botAim(ps, at);
-            ps.botArmed = false;
-            ps.botSwingAtS = null;
-            swinging.add(ps.team);
-          }
-        }
-      } else {
-        ps.botArmed = true;
-        ps.botSwingAtS = null;
-      }
-      if (phase === "serve" && server === ps.slot) {
-        const t = this.match.tossElapsed(now);
-        if (t !== null) {
-          // Strike on the first tick at or past the top of the toss: perfect Timing.
-          if (t >= tossApex()) this.strikeServe(ps, now, this.boxCentre());
-        } else if (ps.serveReadyAt === 0) ps.serveReadyAt = now + 700;
-        else if (now >= ps.serveReadyAt) this.match.startToss(ps.slot, now);
-      } else {
-        ps.serveReadyAt = 0;
-      }
-    }
-  }
-
-  /** A bot's swing point (time to closest, s): perfect, or one window early or late. */
-  private rollSwingAt(): number {
-    if (this.rng() >= BOT.offTimingChance) return 0;
-    const offset = BOT.offTimingWindows * SHOT.perfectWindowS;
-    return this.rng() < BOT.earlyShare ? offset : -offset;
-  }
-
-  /** Lob when both opponents are at the net (or now and then); otherwise Drive. High balls become Smashes. */
-  private chooseBotShot(ps: PlayerSlot): "drive" | "lob" {
-    const opponents = [...this.slots.values()].filter((p) => p.team !== ps.team);
-    const atNet = opponents.length > 0 && opponents.every((p) => Math.abs(p.pos.z) < BOT.netZoneM);
-    return atNet || this.rng() < BOT.lobChance ? "lob" : "drive";
-  }
-
-  /** Aim into the opposite half, toward the open side: away from the nearest opponent's x. */
-  private botAim(ps: PlayerSlot, from: Vec2): Vec2 {
-    let nearest: PlayerSlot | null = null;
-    let best = Infinity;
-    for (const p of this.slots.values()) {
-      if (p.team === ps.team) continue;
-      const d = Math.hypot(p.pos.x - from.x, p.pos.z - from.z);
-      if (d < best) {
-        best = d;
-        nearest = p;
-      }
-    }
-    const targetX = nearest === null ? 0 : nearest.pos.x >= 0 ? -BOT.aimMaxX : BOT.aimMaxX;
-    const targetZ = -ps.side * COURT.length * BOT.aimDepthFrac;
-    const dx = targetX - from.x;
-    const dz = targetZ - from.z;
-    const len = Math.hypot(dx, dz);
-    return { x: dx / len, z: dz / len };
-  }
-
-  private boxCentre(): Vec2 {
-    const box = this.match.serviceBox();
-    if (!box) return { x: 0, z: 0 };
-    return { x: (box.xMin + box.xMax) / 2, z: (box.side * (box.zNear + box.zFar)) / 2 };
   }
 
   // ── Broadcasting ─────────────────────────────────────────────────────────────
