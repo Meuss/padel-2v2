@@ -37,6 +37,46 @@ describe("playerCamPose", () => {
   });
 });
 
+/** Normalized device coordinates of `pt` seen through `pose` on a 16:9 screen. */
+function ndc(pose: ReturnType<typeof playerCamPose>, pt: [number, number, number]): THREE.Vector3 {
+  const cam = new THREE.PerspectiveCamera(pose.fov, 16 / 9, 0.1, 300);
+  cam.position.copy(pose.pos);
+  cam.lookAt(pose.look);
+  cam.updateMatrixWorld();
+  return new THREE.Vector3(...pt).project(cam);
+}
+
+function expectInFrame(v: THREE.Vector3): void {
+  expect(Math.abs(v.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(v.y)).toBeLessThanOrEqual(1);
+  expect(v.z).toBeLessThan(1); // in front of the camera, inside the far plane
+}
+
+// `side` is the sign of the half the player defends, so its own back glass is at z = side * 10
+// and the far baseline at z = -side * 10.
+describe("playerCamPose framing (16:9 projection)", () => {
+  for (const side of [-1, 1] as const) {
+    it(`keeps the ground at the own back glass in frame with the player deep (side ${side})`, () => {
+      for (const ball of [null, { x: 0, z: side * 9.7 }, { x: 0, z: -side * 8 }]) {
+        const pose = playerCamPose({ x: 0, z: side * 9.5 }, ball, side);
+        expectInFrame(ndc(pose, [0, 0, side * 9.7]));
+        expectInFrame(ndc(pose, [3, 0, side * 9.5]));
+        expectInFrame(ndc(pose, [-3, 0, side * 9.5]));
+      }
+    });
+
+    it(`keeps a ball rebounding off the own back glass in frame from mid-court (side ${side})`, () => {
+      const pose = playerCamPose({ x: 0, z: side * 6 }, { x: 0, z: side * 9.7 }, side);
+      expectInFrame(ndc(pose, [0, 0, side * 9.7]));
+    });
+
+    it(`keeps the far baseline in frame with the player at mid-court (side ${side})`, () => {
+      const pose = playerCamPose({ x: 0, z: side * 6 }, null, side);
+      expectInFrame(ndc(pose, [0, 0, -side * 10]));
+    });
+  }
+});
+
 describe("broadcastCamPose", () => {
   it("default framing without a ball", () => {
     const p = broadcastCamPose(null);

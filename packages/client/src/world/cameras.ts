@@ -8,6 +8,11 @@ export interface CamPose {
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
+/** Depth (m from the net, on the player's own half) where the Player cam starts to pull back… */
+const DEEP_FROM = 6;
+/** …and the depth (near the back glass) where it has pulled back fully. */
+const DEEP_FULL = 9.5;
+
 /** Player cam: long-lens broadcast framing behind the player's own end. Pure.
  *  `side` is the sign of the z half the player defends (-1: z<0). */
 export function playerCamPose(
@@ -16,14 +21,20 @@ export function playerCamPose(
   side: -1 | 1,
 ): CamPose {
   const pos = new THREE.Vector3(clamp(player.x * 0.35, -3, 3), 7, side * 17);
+  // How deep the play is on the player's own half: 0 up to 6 m from the net, 1 at the back glass.
+  const depth = Math.max(side * player.z, ball ? side * ball.z : -Infinity);
+  const deep = clamp((depth - DEEP_FROM) / (DEEP_FULL - DEEP_FROM), 0, 1);
   // Work in the player's frame (u grows toward the net). Aim 2 m behind the net on the
   // player's half so the near pair sits low in frame; the ball pulls the look point
   // toward the far end, but never beyond 4 m past the net.
   let u = -2;
   if (ball) u += (-side * ball.z - u) * 0.25;
-  u = Math.min(4, u);
+  // Deep play (player or ball within ~4 m of the own back glass) would put feet and
+  // back-glass rebounds below the frame: cancel the far-end pull, tilt the look point
+  // back and widen the lens a little.
+  u = Math.min(4 - 6 * deep, u) - 3.5 * deep;
   const look = new THREE.Vector3(player.x * 0.2, 0.8, -side * u);
-  return { pos, look, fov: 30 };
+  return { pos, look, fov: 30 + 6 * deep };
 }
 
 /** Broadcast cam for spectators: elevated, behind the z<0 end, gently tracking the ball. Pure. */
