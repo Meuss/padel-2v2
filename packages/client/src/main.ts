@@ -121,6 +121,22 @@ function teamOfSlot(slot: Slot | null): Team | null {
 
 const SEATS: Slot[] = ["A1", "A2", "B1", "B2"];
 let lastCheered: string | null = null;
+/** How long a reaction stays on the LED boards. */
+const BOARD_REACTION_MS = 4000;
+let boardReaction: { id: string; until: number } | null = null;
+let boardReactionTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Show a reaction on the LED boards for BOARD_REACTION_MS, then clear it. */
+function showBoardReaction(id: string): void {
+  boardReaction = { id, until: performance.now() + BOARD_REACTION_MS };
+  renderBoards();
+  if (boardReactionTimer !== null) clearTimeout(boardReactionTimer);
+  boardReactionTimer = setTimeout(() => {
+    boardReactionTimer = null;
+    boardReaction = null; // expired (cleared outright: timers may fire a hair early)
+    renderBoards();
+  }, BOARD_REACTION_MS);
+}
 
 /** Push the current match state and seated names to the LED boards. */
 function renderBoards(): void {
@@ -131,7 +147,7 @@ function renderBoards(): void {
     pointA: match?.pointA ?? "0",
     pointB: match?.pointB ?? "0",
     names: SEATS.map((s) => names.get(s)?.name ?? ""),
-    reaction: null,
+    reaction: boardReaction && performance.now() < boardReaction.until ? boardReaction.id : null,
   });
 }
 
@@ -141,7 +157,7 @@ function maybeCheer(event: string | null): void {
   lastCheered = event;
   // "Set reset" is a vote, not a win: only points, games and "Set & Match" cheer.
   if (event && /^(Point |Game |Set & Match)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
-  const winner = event && /^(Point|Game) /.test(event) ? teamFromEvent(event) : null;
+  const winner = event && /^(Point |Game |Set & Match)/.test(event) ? teamFromEvent(event) : null;
   if (winner) scene.celebrate(winner);
 }
 
@@ -332,7 +348,10 @@ const net = new Net({
     nickMsg.textContent = "A new version of Meuss Padel Club is out.";
     nickname.style.display = "flex";
   },
-  onReaction: (msg) => showReaction(msg.slot, msg.id),
+  onReaction: (msg) => {
+    showReaction(msg.slot, msg.id);
+    showBoardReaction(msg.id);
+  },
   onSnapshot: (msg) => {
     interp.add(msg);
     if (selfSlot) {

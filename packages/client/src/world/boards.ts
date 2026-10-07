@@ -21,7 +21,6 @@ export const CLUB_NAME = "MEUSS PADEL CLUB";
 export const BOARD_W = 2048;
 export const BOARD_H = 128;
 const FONT = "700 64px 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif";
-const OPTIC_YELLOW = "#e4f23a";
 
 function team(names: string[]): string {
   return names
@@ -98,7 +97,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, messages: string[], scr
         ctx.fillText(text, 0, 0);
         ctx.restore();
         x += widths[i]! * squeeze + gap / 2;
-        ctx.fillStyle = OPTIC_YELLOW;
+        ctx.fillStyle = PALETTE.ball;
         ctx.beginPath();
         ctx.arc(x, cy, 6, 0, Math.PI * 2);
         ctx.fill();

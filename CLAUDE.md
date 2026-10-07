@@ -24,7 +24,10 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
   side changes).
 - `packages/client`: `main.ts` (bootstrap, HUD/DOM), `net.ts` (socket + reconnect),
   `interp.ts` (snapshot buffer, renders `INTERP_DELAY_MS` behind), `scene.ts`
-  (Three.js), `input.ts`.
+  (Three.js), `input.ts`. `world/` holds the scene's parts: `arena`, `court`,
+  `avatar`, `cameras`, `boards` (LED ribbon), `quality` (auto fallback) and
+  `palette`; hit feedback will land there too. `public/models/` holds the CC0
+  player model, with its `SOURCE.md`.
 
 ## Conventions
 
