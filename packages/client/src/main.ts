@@ -511,6 +511,7 @@ scene.start((dt) => {
   const framePos = new Map<string, { x: number; z: number }>();
   if (s) {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
+    scene.setBallTarget(s.ball.x, s.ball.z);
     scene.setBallSide(s.ball.z);
     const present = new Set<string>();
     const predicted = predictor.renderPosition(dt);

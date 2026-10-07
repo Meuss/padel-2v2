@@ -17,6 +17,7 @@ import {
   type Vec2,
 } from "@padel/shared";
 import { Arena } from "./world/arena.js";
+import { broadcastCamPose, CameraRig } from "./world/cameras.js";
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes } from "./world/court.js";
@@ -32,10 +33,11 @@ export class PadelScene {
   /** Duration of the frame being built, for avatar speed (set before the frame callback). */
   private frameDt = 1 / 60;
   private court: CourtConfig | null = null;
-  private cameraMode: "spectator" | "player" = "spectator";
+  private rig: CameraRig;
   private camTeam: Team = "A";
-  private camPos = new THREE.Vector3(0, 16, 24);
-  private camLook = new THREE.Vector3(0, 1, 0);
+  private camPlayer: { x: number; z: number } | null = null;
+  private camBall: { x: number; z: number } | null = null;
+  private camSide: -1 | 1 = -1;
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private arena: Arena;
@@ -58,9 +60,11 @@ export class PadelScene {
     // Keep the room's fill subtle: the night arena must stay dark.
     this.scene.environmentIntensity = 0.3;
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300);
-    this.camera.position.copy(this.camPos);
-    this.camera.lookAt(this.camLook);
+    this.camera = new THREE.PerspectiveCamera(36, 1, 0.1, 300);
+    const start = broadcastCamPose(null);
+    this.camera.position.copy(start.pos);
+    this.camera.lookAt(start.look);
+    this.rig = new CameraRig(this.camera);
 
     this.arena = new Arena(this.scene, "high");
 
@@ -232,24 +236,25 @@ export class PadelScene {
   }
 
   setSpectatorCamera(): void {
-    this.cameraMode = "spectator";
-    this.camPos.set(0, 16, 24);
-    this.camLook.set(0, 1, 0);
+    this.rig.setMode("broadcast");
   }
 
   setPlayerCamera(team: Team): void {
-    this.cameraMode = "player";
     this.camTeam = team;
+    this.rig.setMode("player");
   }
 
-  /** In player mode, place the camera behind the player (away from the net),
-   *  looking toward the net. Derived from the player's z-side so it stays correct
-   *  after an ends-swap. */
+  /** Stores the local player's position; the side comes from the player's z so it stays
+   *  correct after an ends-swap. */
   focusCamera(x: number, _y: number, z: number): void {
-    if (this.cameraMode !== "player") return;
-    const s = z < 0 ? -1 : 1; // which end the player is on
-    this.camPos.set(x * 0.5, 6.5, z + s * 10);
-    this.camLook.set(x * 0.35, 1.4, z - s * 6);
+    this.camPlayer = { x, z };
+    this.camSide = z < 0 ? -1 : 1;
+    this.rig.setTargets(this.camPlayer, this.camBall, this.camSide);
+  }
+
+  setBallTarget(x: number, z: number): void {
+    this.camBall = { x, z };
+    this.rig.setTargets(this.camPlayer, this.camBall, this.camSide);
   }
 
   setBall(x: number, y: number, z: number): void {
@@ -283,9 +288,7 @@ export class PadelScene {
     this.arena.update(dt);
     for (const a of this.players.values()) a.update(dt);
     this.updateMarkers(now);
-    // Smoothly ease the camera toward its target pose.
-    this.camera.position.lerp(this.camPos, 0.12);
-    this.camera.lookAt(this.camLook);
+    this.rig.update(dt);
     this.renderer.render(this.scene, this.camera);
   }
 
