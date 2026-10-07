@@ -132,8 +132,9 @@ export class Room {
     return this.fillSlot(clientId, name, false);
   }
 
-  /** Spawn an AI bot into a free slot with a random funny name. */
-  addBot(): void {
+  /** Spawn an AI bot into a free seat. Only a seated human may ask. */
+  addBot(requesterId: string): boolean {
+    if (!this.isSeated(requesterId)) return false;
     const used = new Set(
       [...this.slots.values()].filter((p) => p.isBot).map((p) => p.name),
     );
@@ -144,10 +145,12 @@ export class Room {
       : `Bot ${this.botCounter}`;
     const ps = this.fillSlot(`bot-${this.botCounter}`, name, true);
     if (ps) console.log(`[bot] spawned ${ps.name} as ${ps.slot}`);
+    return ps !== null;
   }
 
-  /** Remove all AI bots. */
-  clearBots(): void {
+  /** Remove all AI bots. Only a seated human may ask. */
+  clearBots(requesterId: string): boolean {
+    if (!this.isSeated(requesterId)) return false;
     let removed = false;
     for (const [slot, ps] of [...this.slots]) {
       if (ps.isBot) {
@@ -159,6 +162,15 @@ export class Room {
       this.syncMatchRoster();
       this.broadcastRoster();
     }
+    return removed;
+  }
+
+  /** Whether this connection holds a seat (bots never count as requesters). */
+  private isSeated(clientId: string): boolean {
+    for (const ps of this.slots.values()) {
+      if (ps.clientId === clientId && !ps.isBot) return true;
+    }
+    return false;
   }
 
   private fillSlot(clientId: string, name: string, isBot: boolean): PlayerSlot | null {

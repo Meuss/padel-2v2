@@ -41,6 +41,7 @@ const reactionsEl = document.getElementById("reactions")!;
 const BASE = import.meta.env.BASE_URL;
 
 const scene = new PadelScene(app);
+if (import.meta.env.DEV) (window as unknown as { __padelScene: PadelScene }).__padelScene = scene;
 const interp = new InterpBuffer();
 const seenSlots = new Set<string>();
 
@@ -83,9 +84,13 @@ function renderHud(): void {
       state.slot ? ` (${state.slot})` : ""
     }</span></div>
     <div>players: ${state.players}/4 · spectators: ${state.spectators}</div>
-    <div style="margin-top:4px;opacity:.7;font-size:12px">
+    ${
+      state.role === "player"
+        ? `<div style="margin-top:4px;opacity:.7;font-size:12px">
       <strong>B</strong> add bot · <strong>N</strong> clear bots
-    </div>
+    </div>`
+        : ""
+    }
   `;
 }
 
@@ -321,8 +326,8 @@ for (const id of REACTIONS) {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
-  if (e.code === "KeyB") net.send({ t: "addbot" });
-  else if (e.code === "KeyN") net.send({ t: "clearbots" });
+  if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
+  else if (e.code === "KeyN" && role === "player") net.send({ t: "clearbots" });
   else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
     reactbar.classList.toggle("open");
   }

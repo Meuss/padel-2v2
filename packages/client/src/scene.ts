@@ -108,6 +108,8 @@ export class PadelScene {
   }
 
   buildCourt(court: CourtConfig): void {
+    // The court is static and a Welcome arrives on every (re)connect: build once.
+    if (this.court) return;
     this.court = court;
     const halfW = court.width / 2;
     const halfL = court.length / 2;

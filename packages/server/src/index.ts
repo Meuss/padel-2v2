@@ -89,10 +89,10 @@ wss.on("connection", (ws) => {
       room.declineVote(id);
     } else if (msg.t === "addbot") {
       room.markActivity(id);
-      room.addBot();
+      room.addBot(id);
     } else if (msg.t === "clearbots") {
       room.markActivity(id);
-      room.clearBots();
+      room.clearBots(id);
     }
   });
 
