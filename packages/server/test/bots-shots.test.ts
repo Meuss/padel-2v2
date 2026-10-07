@@ -11,6 +11,9 @@ const scoreOf = (m: MatchMsg, team: Team) => {
   return games * 100 + (m.tiebreak ? Number(label) : POINT_ORDER.indexOf(label));
 };
 
+/** Several simulated minutes of physics per test: room on a loaded CI machine. */
+const LONG_TEST_MS = 30_000;
+
 /** A seeded 4-bot match watched by a spectator, run for `seconds` of simulated time. */
 async function botMatch(seed: number, seconds: number) {
   const room = await Room.create({ seed });
@@ -53,7 +56,7 @@ describe("bots use every shot with imperfect timing", () => {
     expect(points.some((p) => p.winner === "A")).toBe(true);
     expect(points.some((p) => p.winner === "B")).toBe(true);
     expect(points.filter((p) => p.reason?.startsWith("Double hit"))).toEqual([]);
-  });
+  }, LONG_TEST_MS);
 
   it("bots Smash high balls: a Smash appears in at least 3 of 5 seeded 2-minute matches", async () => {
     let withSmash = 0;
@@ -62,7 +65,7 @@ describe("bots use every shot with imperfect timing", () => {
       if (shots.some((s) => s.kind === "smash")) withSmash++;
     }
     expect(withSmash).toBeGreaterThanOrEqual(3);
-  });
+  }, LONG_TEST_MS);
 
   it("the same seed plays the same match", async () => {
     const a = await botMatch(42, 20);

@@ -11,13 +11,18 @@ import {
 import { Room } from "../src/room.js";
 import { fakeClient, sendInput, stepUntil } from "./fakes.js";
 
+/** Every room is seeded, so the bots' decisions (and so these physics runs) are reproducible. */
+const SEED = 7;
+/** Long physics runs (thousands of steps) get room on a loaded CI machine. */
+const LONG_TEST_MS = 30_000;
+
 /**
  * One human (A1, serves first) against one bot (B1), so the match leaves warm-up. With
  * `idleReceiver`, B1 is a second human who never moves or swings instead, so nobody can
  * volley the serve before it lands.
  */
 async function humanVsBot({ idleReceiver = false } = {}) {
-  const room = await Room.create();
+  const room = await Room.create({ seed: SEED });
   const p = fakeClient("p1");
   room.addClient(p.client);
   room.claimSlot("p1", "Ana");
@@ -193,7 +198,7 @@ describe("aimed serve with a toss", () => {
 
   it("the server leaving mid-toss sets up a fresh serve for the new server", async () => {
     // Three humans (A1, B1, A2), so nobody tosses on their own.
-    const room = await Room.create();
+    const room = await Room.create({ seed: SEED });
     const clients = ["p1", "p2", "p3"].map(fakeClient);
     for (const c of clients) {
       room.addClient(c.client);
@@ -249,7 +254,7 @@ describe("aimed serve with a toss", () => {
   });
 
   it("a Bot server never faults across 5 points", async () => {
-    const room = await Room.create();
+    const room = await Room.create({ seed: SEED });
     const host = fakeClient("p1");
     const watcher = fakeClient("w1");
     room.addClient(host.client);
@@ -281,5 +286,5 @@ describe("aimed serve with a toss", () => {
     expect(tossed).toBe(true);
     expect(matchesSince(watcher.messages(), 0).filter(isFault)).toEqual([]);
     room.stop();
-  });
+  }, LONG_TEST_MS);
 });

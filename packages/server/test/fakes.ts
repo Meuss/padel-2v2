@@ -6,7 +6,13 @@ export function fakeClient(id: string) {
   const sent: string[] = [];
   const ws = { readyState: 1, OPEN: 1, send: (d: string) => sent.push(d), close: () => {} };
   const client: Client = { id, ws: ws as unknown as Client["ws"], name: id, lastActivity: Date.now() };
-  const messages = (): ServerMessage[] => sent.map((d) => decodeServer(d));
+  // Decoded incrementally: long physics tests call messages() every step, and re-decoding
+  // everything each time is quadratic in the number of messages.
+  const decoded: ServerMessage[] = [];
+  const messages = (): readonly ServerMessage[] => {
+    for (let i = decoded.length; i < sent.length; i++) decoded.push(decodeServer(sent[i]!));
+    return decoded;
+  };
   function last<T extends ServerMessage["t"]>(t: T): Extract<ServerMessage, { t: T }> | null {
     const all = messages();
     for (let i = all.length - 1; i >= 0; i--) {
