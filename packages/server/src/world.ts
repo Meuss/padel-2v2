@@ -17,6 +17,12 @@ export interface BallState {
 
 export type ContactKind = "floor" | "wall" | "net";
 
+export interface Contact {
+  kind: ContactKind;
+  pos: Vec3;
+  speed: number;
+}
+
 export class PhysicsWorld {
   private constructor(
     readonly world: RAPIER.World,
@@ -107,10 +113,15 @@ export class PhysicsWorld {
     );
   }
 
-  /** Step the simulation and return the surfaces the ball started touching. */
-  step(): ContactKind[] {
+  /**
+   * Step the simulation and return the surfaces the ball started touching, with the
+   * ball's position after the step and its speed going into the contact.
+   */
+  step(): Contact[] {
+    const v = this.ball.linvel();
+    const speed = Math.hypot(v.x, v.y, v.z);
     this.world.step(this.eventQueue);
-    const contacts: ContactKind[] = [];
+    const contacts: Contact[] = [];
     this.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const other =
@@ -121,7 +132,7 @@ export class PhysicsWorld {
             : null;
       if (other === null) return;
       const kind = this.kinds.get(other);
-      if (kind) contacts.push(kind);
+      if (kind) contacts.push({ kind, pos: this.ballPosition(), speed });
     });
     return contacts;
   }
@@ -143,6 +154,13 @@ export class PhysicsWorld {
   ballSpeed(): number {
     const v = this.ball.linvel();
     return Math.hypot(v.x, v.y, v.z);
+  }
+
+  /** Teleport the ball with a given velocity (tests and dev tools). */
+  placeBall(pos: Vec3, vel: Vec3): void {
+    this.ball.setTranslation(pos, true);
+    this.ball.setLinvel(vel, true);
+    this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
   /** Directly set the ball's velocity — used to resolve a player's swing. */
@@ -175,8 +193,6 @@ export class PhysicsWorld {
 
   /** Freeze the ball at a position (serve setup / between points). */
   holdBall(pos: Vec3): void {
-    this.ball.setTranslation(pos, true);
-    this.ball.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.placeBall(pos, { x: 0, y: 0, z: 0 });
   }
 }

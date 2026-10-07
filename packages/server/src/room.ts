@@ -12,6 +12,7 @@ import type { WebSocket } from "ws";
 import {
   BALL,
   COURT,
+  LAG,
   PLAYER,
   REACTIONS,
   SNAPSHOT_RATE,
@@ -21,10 +22,15 @@ import {
   TICK_RATE,
   TOSS,
   encode,
-  hitVelocity,
+  judgeTiming,
+  resolveKind,
+  shotVelocity,
   stepPlayer,
   swingConnects,
+  timeToClosest,
   tossApex,
+  type ContactEvent,
+  type ContactSurface,
   type ReactionMsg,
   type InputMsg,
   type KickedMsg,
@@ -32,18 +38,36 @@ import {
   type PlayerInfo,
   type PlayerState,
   type RosterMsg,
+  type ShotEvent,
   type Slot,
   type SnapshotMsg,
   type Team,
   type Vec2,
+  type Vec3,
   type VoteMsg,
 } from "@padel/shared";
+import { BallHistory, type BallSample } from "./history.js";
 import { MatchEngine } from "./match.js";
-import { PhysicsWorld } from "./world.js";
+import { PhysicsWorld, type Contact } from "./world.js";
 
 const SLOT_ORDER: Slot[] = ["A1", "B1", "A2", "B2"];
 const TEAM_OF: Record<Slot, Team> = { A1: "A", A2: "A", B1: "B", B2: "B" };
-const RACKET_Y = 1.0;
+
+const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isFiniteVec2 = (v: unknown): v is Vec2 =>
+  typeof v === "object" && v !== null && isFiniteNumber((v as Vec2).x) && isFiniteNumber((v as Vec2).z);
+
+/** Whether every number the room reads from an input is finite (a hostile client can send NaN). */
+function isValidInput(input: InputMsg): boolean {
+  return isFiniteVec2(input.move) && isFiniteVec2(input.aim) && isFiniteNumber(input.view);
+}
+
+/** What a snapshot reports for a contact: the walls are glass up to COURT.glassHeight, mesh above. */
+function contactSurface(c: Contact): ContactSurface {
+  if (c.kind !== "wall") return c.kind;
+  return c.pos.y <= COURT.glassHeight ? "glass" : "fence";
+}
 
 /** Funny bot names — famous folks + Swiss / Lausanne flavour. */
 const BOT_NAMES = [
@@ -69,6 +93,8 @@ interface PlayerSlot {
   stepCredit: number; // humans: token bucket limiting inputs consumed per second
   /** Shot requested since the last tick that consumed it (captured on arrival). */
   shotRequested: "drive" | "lob" | null;
+  /** The `view` time of the input that requested it: the moment the player saw. */
+  shotView: number;
   serveRequested: boolean;
   lastSwingMs: number;
   isBot: boolean;
@@ -104,6 +130,13 @@ export class Room {
   private timer: NodeJS.Timeout | null = null;
   /** Simulation clock (ms): advances exactly TICK_MS per step, so match timings follow the ticks. */
   private clock = performance.now();
+  /** Recent ball states, so swings are judged against the ball the player saw. */
+  private history = new BallHistory();
+  /** Bumped whenever the ball's flight changes by fiat: a hit, a serve, a relaunch, a placement. */
+  private hitSeq = 0;
+  /** Events since the last snapshot, sent with the next one. */
+  private pendingShots: ShotEvent[] = [];
+  private pendingContacts: ContactEvent[] = [];
   private lastSetupId = -1;
   private warmupIdle = 0;
   private botCounter = 0;
@@ -142,6 +175,17 @@ export class Room {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /** The simulation clock (ms): the units of snapshot `serverTime` and of `InputMsg.view`. */
+  get serverTime(): number {
+    return this.clock;
+  }
+
+  /** Test and dev only: teleport the ball and give it a velocity. Counts as a new flight. */
+  debugPlaceBall(pos: Vec3, vel: Vec3): void {
+    this.physics.placeBall(pos, vel);
+    this.hitSeq++;
   }
 
   addClient(client: Client): void {
@@ -213,6 +257,7 @@ export class Room {
       ack: undefined,
       stepCredit: 0,
       shotRequested: null,
+      shotView: 0,
       serveRequested: false,
       lastSwingMs: 0,
       isBot,
@@ -247,11 +292,15 @@ export class Room {
   }
 
   handleInput(clientId: string, input: InputMsg): void {
+    if (!isValidInput(input)) return;
     for (const ps of this.slots.values()) {
       if (ps.clientId === clientId) {
         ps.inputQueue.push(input);
         if (ps.inputQueue.length > MAX_QUEUED_INPUTS) ps.inputQueue.shift();
-        if (input.shot === "drive" || input.shot === "lob") ps.shotRequested = input.shot;
+        if (input.shot === "drive" || input.shot === "lob") {
+          ps.shotRequested = input.shot;
+          ps.shotView = input.view;
+        }
         if (input.serve) ps.serveRequested = true;
         return;
       }
@@ -327,7 +376,7 @@ export class Room {
     const needed = this.humanPlayerIds();
     if (needed.length > 0 && needed.every((pid) => this.vote!.accepted.has(pid))) {
       this.vote = null;
-      this.match.resetMatch();
+      this.match.resetMatch(this.clock);
       this.broadcastMatch();
     }
   }
@@ -368,6 +417,7 @@ export class Room {
   private syncMatchRoster(): void {
     this.match.setRoster(
       [...this.slots.values()].map((p) => ({ slot: p.slot, team: p.team })),
+      this.clock,
     );
   }
 
@@ -394,15 +444,20 @@ export class Room {
     }
 
     const contacts = this.physics.step();
+    for (const c of contacts) {
+      this.pendingContacts.push({ surface: contactSurface(c), pos: c.pos, speed: c.speed });
+    }
     const action = this.match.tick(
       now,
       this.physics.ballPosition(),
       this.physics.ballSpeed(),
-      contacts,
+      contacts.map((c) => c.kind),
     );
     if (action.hold) this.physics.holdBall(action.hold);
     if (this.match.phase === "warmup") this.warmupBall(now);
     this.placeServeAvatars();
+    // The ball as it is at the end of this tick: the state the snapshot shows at `clock`.
+    this.history.push({ time: this.clock, ...this.physics.ballState(), hitSeq: this.hitSeq });
 
     this.tick++;
     // Match first: a snapshot on an ends-swap tick must be read with the new sides.
@@ -411,12 +466,18 @@ export class Room {
     if (this.tick % 15 === 0) this.maintainSession(); // ~4×/s
   }
 
-  /** Space starts the server's toss; a click while it is in the air strikes it. */
+  /**
+   * Space starts the server's toss; a click while it is in the air strikes it. The strike
+   * is timed at the moment the player saw (their `view`), not when the click arrived.
+   */
   private handleServeRequests(now: number): void {
+    const serving = this.match.phase === "serve";
     const server = this.match.currentServer;
     for (const ps of this.slots.values()) {
       if (ps.isBot || ps.slot !== server) {
         ps.serveRequested = false;
+        // A receiver's click before the serve must not swing at it on the strike tick.
+        if (serving) ps.shotRequested = null;
         continue;
       }
       if (ps.serveRequested) {
@@ -426,7 +487,8 @@ export class Room {
       }
       if (ps.shotRequested && this.match.tossElapsed(now) !== null) {
         ps.shotRequested = null;
-        this.strikeServe(ps, now, this.serveAimPoint(ps));
+        const strikeTime = now - clamp(now - ps.shotView, 0, LAG.maxRewindMs);
+        this.strikeServe(ps, strikeTime, this.serveAimPoint(ps));
       }
     }
   }
@@ -440,10 +502,18 @@ export class Room {
     return { x: ps.pos.x + (dir.x / len) * reach, z: ps.pos.z + (dir.z / len) * reach };
   }
 
-  private strikeServe(ps: PlayerSlot, now: number, aimPoint: Vec2): void {
-    const struck = this.match.strikeServe(ps.slot, now, aimPoint);
+  /** `strikeTime` is when the strike happened: rewound for humans, the present for bots. */
+  private strikeServe(ps: PlayerSlot, strikeTime: number, aimPoint: Vec2): void {
+    const struck = this.match.strikeServe(ps.slot, strikeTime, aimPoint);
     if (!struck) return;
     this.physics.launchServe(struck.launch.from, struck.launch.to);
+    this.hitSeq++;
+    this.pendingShots.push({
+      slot: ps.slot,
+      kind: "serve",
+      timing: struck.timing,
+      pos: this.physics.ballPosition(),
+    });
     ps.botArmed = false; // don't lunge at our own serve
   }
 
@@ -488,26 +558,50 @@ export class Room {
     ps.pos.z = p.z;
   }
 
+  /**
+   * Resolve this tick's swings, each judged against the ball as the player saw it: rewound
+   * to their `view` (at most LAG.maxRewindMs; bots see the present). A swing at a ball that
+   * someone has hit since that moment misses. Reach, Smash height and Timing come from the
+   * seen ball; the new velocity goes onto the live one.
+   */
   private resolveSwings(now: number): void {
     const inRally = this.match.phase === "rally";
     for (const ps of this.slots.values()) {
-      // Until shot kinds land (Task 3), any requested shot is a Drive-style swing.
-      if (ps.shotRequested === null) continue;
+      const requested = ps.shotRequested;
+      if (requested === null) continue;
       ps.shotRequested = null;
       if (now - ps.lastSwingMs < SWING.cooldownMs) continue;
       ps.lastSwingMs = now;
 
-      const ball = this.physics.ballPosition();
-      if (!swingConnects(ps.pos.x, RACKET_Y, ps.pos.z, ball, PLAYER.reach + BALL.radius)) {
+      const live = this.physics.ballState();
+      const present: BallSample = { time: now, ...live, hitSeq: this.hitSeq };
+      const rewindMs = ps.isBot ? 0 : clamp(now - ps.shotView, 0, LAG.maxRewindMs);
+      const seen = rewindMs > 0 ? (this.history.at(now - rewindMs) ?? present) : present;
+      if (seen.hitSeq !== present.hitSeq) continue;
+
+      const racket = { x: ps.pos.x, y: PLAYER.racketHeight, z: ps.pos.z };
+      if (!swingConnects(racket.x, racket.y, racket.z, seen.pos, PLAYER.reach + BALL.radius)) {
         continue;
       }
       // In a rally, only a legal hit actually moves the ball (an illegal one —
       // hitting your own serve, or a double touch — must not).
       if (inRally && !this.match.hit(ps.slot, ps.team, now)) continue;
-      const aim = ps.input?.aim ?? { x: 0, z: ps.side < 0 ? 1 : -1 };
-      const v = hitVelocity(aim, SWING.power, SWING.lift);
+
+      const kind = resolveKind(requested, seen.pos.y);
+      const rel = { x: seen.pos.x - racket.x, y: seen.pos.y - racket.y, z: seen.pos.z - racket.z };
+      const timing = judgeTiming(timeToClosest(rel, seen.vel));
+      const v = shotVelocity(kind, timing, this.shotAim(ps));
       this.physics.setBallVelocity(v.x, v.y, v.z);
+      this.hitSeq++;
+      this.pendingShots.push({ slot: ps.slot, kind, timing, pos: live.pos });
     }
+  }
+
+  /** The player's aim as a unit ground direction (straight at the far end if they have none). */
+  private shotAim(ps: PlayerSlot): Vec2 {
+    const aim = ps.input?.aim;
+    const len = aim ? Math.hypot(aim.x, aim.z) : 0;
+    return aim && len > 1e-6 ? { x: aim.x / len, z: aim.z / len } : { x: 0, z: -ps.side };
   }
 
   /** Teleport the server (and receiver) into place when a point is set up, and
@@ -543,6 +637,7 @@ export class Room {
     this.warmupIdle = resting ? this.warmupIdle + 1 : 0;
     if (this.warmupIdle >= 90) {
       this.warmupIdle = 0;
+      this.hitSeq++;
       this.physics.launchServe(
         { x: 0, y: 3, z: 0 },
         { x: (Math.random() - 0.5) * 6, y: 0, z: (Math.random() - 0.5) * 12 },
@@ -557,7 +652,7 @@ export class Room {
     const server = this.match.currentServer;
     const { pos: ball, vel } = this.physics.ballState();
     const halfL = COURT.length / 2;
-    const clamp = (v: number) => (v < -1 ? -1 : v > 1 ? 1 : v);
+    const unit = (v: number) => clamp(v, -1, 1);
     for (const ps of this.slots.values()) {
       if (!ps.isBot) continue;
       const s = ps.side;
@@ -577,10 +672,10 @@ export class Room {
         t: "input",
         seq: 0,
         ts: now,
-        move: { x: clamp((tx - ps.pos.x) * s), z: clamp(-(tz - ps.pos.z) * s) },
-        aim: { x: clamp(-ps.pos.x * 0.15), z: -s },
+        move: { x: unit((tx - ps.pos.x) * s), z: unit(-(tz - ps.pos.z) * s) },
+        aim: { x: unit(-ps.pos.x * 0.15), z: -s },
         shot: null,
-        view: 0,
+        view: now, // bots see the present
         serve: false,
       };
       const dx = ball.x - ps.pos.x;
@@ -589,7 +684,7 @@ export class Room {
       // and has re-entered reach (re-armed after it leaves), so the bot never
       // hits its own ball twice.
       if (phase === "rally" && Math.sign(ball.z) === s) {
-        const d = Math.hypot(dx, ball.y - RACKET_Y, dz);
+        const d = Math.hypot(dx, ball.y - PLAYER.racketHeight, dz);
         const inReach = d <= PLAYER.reach + BALL.radius + 0.2;
         if (inReach && ps.botArmed) {
           ps.shotRequested = "drive";
@@ -635,13 +730,19 @@ export class Room {
   }
 
   private broadcastSnapshot(): void {
+    const shots = this.pendingShots;
+    const contacts = this.pendingContacts;
+    this.pendingShots = [];
+    this.pendingContacts = [];
     if (this.clients.size === 0) return;
     const snapshot: SnapshotMsg = {
       t: "snapshot",
       tick: this.tick,
-      serverTime: Date.now(),
+      serverTime: this.clock,
       ball: this.physics.ballState(),
       players: this.buildPlayerStates(),
+      ...(shots.length > 0 && { shots }),
+      ...(contacts.length > 0 && { contacts }),
     };
     this.sendAll(encode(snapshot));
   }

@@ -118,9 +118,9 @@ describe("aimed serve with a toss", () => {
     // A bot receiver would volley a long serve back before it lands, so B1 stays idle.
     const { room, p, match } = await humanVsBot({ idleReceiver: true });
     const g = serveGeometry(p);
-    // With the aim point |z| + 4 m along the aim (≈ 4 m past the net) and TOSS.depthPerSecond = 14,
-    // apex + 0.3 s only adds 2.8 m and still lands in; apex + 0.4 s (before TOSS.expireS) goes long.
-    const lateTicks = Math.round((tossApex() + 0.4) * TICK_RATE);
+    // The aim point lies |z| + TOSS.aimBeyondM (6 m) along the aim, deep in the box; at
+    // TOSS.depthPerSecond = 18, apex + 0.3 s adds 3.6 m of depth and lands past the service line.
+    const lateTicks = Math.round((tossApex() + 0.3) * TICK_RATE);
     expect(lateTicks / TICK_RATE).toBeLessThan(TOSS.expireS);
     tossAndStrike(room, lateTicks, aimAt(g.from, g.centre));
     expect(match().phase).toBe("rally");
@@ -142,23 +142,61 @@ describe("aimed serve with a toss", () => {
     room.stop();
   });
 
-  it("toss state resets when the next serve is set up", async () => {
-    const { room, p, match } = await humanVsBot();
+  it("the server leaving mid-toss sets up a fresh serve for the new server", async () => {
+    // Three humans (A1, B1, A2), so nobody tosses on their own.
+    const room = await Room.create();
+    const clients = ["p1", "p2", "p3"].map(fakeClient);
+    for (const c of clients) {
+      room.addClient(c.client);
+      room.claimSlot(c.client.id, c.client.id);
+    }
+    const watcher = clients[1]!;
+    room.step();
+    expect(watcher.last("match")!.serverSlot).toBe("A1");
     sendInput(room, "p1", { serve: true });
     room.step();
-    stepUntil(room, () => match().event === "Fault — second serve", 120);
-    expect(match().tossing).toBe(false);
-    // The second serve is set up after the pause.
-    expect(stepUntil(room, () => match().phase === "serve", 200)).not.toBeNull();
-    expect(match().tossing).toBe(false);
-    expect(match().awaitingServe).toBe(true);
-    // A click without a new toss does nothing.
-    const g = serveGeometry(p);
-    sendInput(room, "p1", { shot: "drive", aim: aimAt(g.from, g.centre) });
+    expect(watcher.last("match")!.tossing).toBe(true);
+
+    const from = watcher.messages().length;
+    room.removeClient("p1");
     room.step();
-    room.step();
-    expect(match().phase).toBe("serve");
+    const next = matchesSince(watcher.messages(), from)[0];
+    expect(next).toBeDefined();
+    expect(next!.serverSlot).toBe("A2");
+    expect(next!.phase).toBe("serve");
+    expect(next!.tossing).toBe(false);
+    expect(next!.awaitingServe).toBe(true);
     room.stop();
+  });
+
+  it("a strike is judged at the client's view: clicking at the apex it sees is perfect", async () => {
+    // The click reaches the server 150 ms after the apex, but the client was rendering the apex.
+    for (const rewind of [true, false]) {
+      const { room, p, match } = await humanVsBot({ idleReceiver: true });
+      const g = serveGeometry(p);
+      const aim = aimAt(g.from, g.centre);
+      const tossStart = room.serverTime; // the toss starts on the next step, at this time
+      sendInput(room, "p1", { serve: true, aim });
+      room.step();
+      const apex = tossStart + tossApex() * 1000;
+      while (room.serverTime < apex + 150 - 1) {
+        sendInput(room, "p1", { aim });
+        room.step();
+      }
+      const from = p.messages().length;
+      sendInput(room, "p1", { shot: "drive", aim, view: rewind ? apex : room.serverTime });
+      room.step();
+      expect(match().phase).toBe("rally");
+      for (let i = 0; i < 3; i++) room.step();
+      const shots = p
+        .messages()
+        .slice(from)
+        .flatMap((m) => (m.t === "snapshot" ? (m.shots ?? []) : []));
+      expect(shots).toEqual([
+        { slot: "A1", kind: "serve", timing: rewind ? "perfect" : "late", pos: expect.any(Object) },
+      ]);
+      room.stop();
+    }
   });
 
   it("a Bot server never faults across 5 points", async () => {

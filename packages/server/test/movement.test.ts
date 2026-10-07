@@ -91,4 +91,32 @@ describe("server input queue", () => {
     }
     room.stop();
   });
+
+  it("drops inputs whose move, aim or view is not a finite number", async () => {
+    const { room, p, me } = await seatedRoom();
+    const bad: InputMsg[] = [
+      { ...input(1, { x: Number.NaN, z: 1 }) },
+      { ...input(2, { x: 0, z: Number.POSITIVE_INFINITY }) },
+      { ...input(3, { x: 0, z: 1 }), aim: { x: Number.NaN, z: 1 } },
+      { ...input(4, { x: 0, z: 1 }), view: Number.NaN, shot: "drive" },
+      // A hostile client can send anything that parses as JSON.
+      { ...input(5, { x: 0, z: 1 }), aim: null as unknown as Vec2 },
+      { ...input(6, { x: 0, z: 1 }), view: "soon" as unknown as number },
+    ];
+    for (const b of bad) room.handleInput("p1", b);
+    room.step();
+    room.step();
+    room.step();
+    expect(me().ack).toBeUndefined();
+    expect(me().pos).toEqual({ x: -2.5, y: 0, z: -5 });
+    expect(p.last("snapshot")!.shots).toBeUndefined();
+
+    room.handleInput("p1", input(7, { x: 0, z: 1 }));
+    room.step();
+    room.step();
+    room.step();
+    expect(me().ack).toBe(7);
+    room.stop();
+  });
 });
+

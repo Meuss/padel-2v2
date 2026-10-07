@@ -14,8 +14,11 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   BALL,
+  type ContactEvent,
   type CourtConfig,
   type FaultHighlight,
+  type ShotEvent,
+  type ShotKind,
   type Slot,
   type Team,
   type Vec2,
@@ -236,10 +239,13 @@ export class PadelScene {
     return { x: dx / len, z: dz / len };
   }
 
-  /** Start a racket swing animation for a slot's avatar. */
-  triggerSwing(slot: Slot): void {
-    this.players.get(slot)?.swing("drive");
+  /** Start a racket swing animation for a slot's avatar: overhead for a Smash, else a Drive. */
+  triggerSwing(slot: Slot, kind: ShotKind = "drive"): void {
+    this.players.get(slot)?.swing(kind === "smash" ? "smash" : "drive");
   }
+
+  /** Shots and ball contacts from a snapshot, for effects and sound. A no-op for now. */
+  onEvents(_shots: readonly ShotEvent[], _contacts: readonly ContactEvent[]): void {}
 
   /** Flash a red highlight on whatever caused the lost point. */
   showFault(h: FaultHighlight): void {

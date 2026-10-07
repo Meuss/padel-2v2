@@ -75,11 +75,6 @@ export function swingConnects(
   return Math.hypot(dx, dy, dz) <= maxDist;
 }
 
-/** Velocity imparted to the ball by a swing: horizontal aim × power, plus lift. */
-export function hitVelocity(aim: Vec2, power: number, lift: number): Vec3 {
-  return { x: aim.x * power, y: lift, z: aim.z * power };
-}
-
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }

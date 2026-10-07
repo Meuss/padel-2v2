@@ -3,6 +3,8 @@
  * a `t` discriminator. Both sides import these types so the format cannot drift.
  */
 
+import type { ShotKind, Timing } from "./shots.js";
+
 export type Vec2 = { x: number; z: number };
 export type Vec3 = { x: number; y: number; z: number };
 export type Quat = { x: number; y: number; z: number; w: number };
@@ -133,13 +135,34 @@ export interface PlayerState {
   ack?: number;
 }
 
+/** A swing that hit the ball (or a serve strike) since the previous snapshot. */
+export interface ShotEvent {
+  slot: Slot;
+  kind: ShotKind;
+  timing: Timing;
+  pos: Vec3; // ball position at the hit
+}
+
+export type ContactSurface = "floor" | "glass" | "fence" | "net";
+
+/** The ball touching a surface since the previous snapshot. */
+export interface ContactEvent {
+  surface: ContactSurface;
+  pos: Vec3;
+  speed: number; // ball speed (m/s) just before the contact
+}
+
 /** Authoritative world state at a given tick. */
 export interface SnapshotMsg {
   t: "snapshot";
   tick: number;
-  serverTime: number; // server clock (ms)
+  /** Server simulation clock (ms): advances TICK_MS per tick. InputMsg.view is in these units. */
+  serverTime: number;
   ball: { pos: Vec3; vel: Vec3 };
   players: PlayerState[];
+  /** Present only when something happened since the previous snapshot. */
+  shots?: ShotEvent[];
+  contacts?: ContactEvent[];
 }
 
 export type MatchPhase = "warmup" | "serve" | "rally" | "between" | "over";

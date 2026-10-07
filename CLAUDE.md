@@ -49,13 +49,20 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
   client predicts with the same function and replays unacked inputs
   (`client/src/predict.ts`). Change movement there, never on one side only.
 - Players are not physics bodies. Hits are resolved by proximity
-  (`swingConnects`); only the ball is simulated.
+  (`swingConnects`); only the ball is simulated. A swing is judged against the ball
+  the player saw: the room rewinds to the input's `view` (at most
+  `LAG.maxRewindMs`) through `server/src/history.ts`, and misses if anyone has hit
+  the ball since.
+- One clock: snapshot `serverTime`, `InputMsg.view`, the ball history and every
+  `now` given to `MatchEngine` are the room's simulated clock (`Room.serverTime`,
+  `TICK_MS` per step), never `Date.now()`.
 - Reaction images live in `packages/client/public/reactions/<id>.png` and must
   match `REACTIONS` in `messages.ts`. The root `images/` folder holds the source
   copies.
 - `pnpm shoot` (dev server running) renders the game in headless Chrome and writes screenshots + render stats to `.shots/`; use it to verify visual changes.
 - Tests: `packages/**/test/*.test.ts`, run with Vitest from the root. `Room.create()`
-  works headless with fake sockets (see `server/test/roster.test.ts`).
+  works headless with fake sockets (`server/test/fakes.ts`); `room.debugPlaceBall()`
+  sets up a shot.
 
 ## Gotchas
 

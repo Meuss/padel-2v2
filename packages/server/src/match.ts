@@ -113,16 +113,17 @@ export class MatchEngine {
 
   // ── Roster / lifecycle ─────────────────────────────────────────────────────
 
-  setRoster(players: RosterPlayer[]): void {
+  /** `now` is the room's simulation clock (ms), like every `now` the engine is given. */
+  setRoster(players: RosterPlayer[], now: number): void {
     this.players = players;
     const ready = this.teamPlayers("A").length > 0 && this.teamPlayers("B").length > 0;
     if (!ready) {
       if (this.phase !== "warmup") this.reset();
       return;
     }
-    if (this.phase === "warmup") this.startMatch();
+    if (this.phase === "warmup") this.startMatch(now);
     else if (!this.players.some((p) => p.slot === this.serverSlot)) {
-      this.setupServe(performance.now(), 1);
+      this.setupServe(now, 1);
     }
   }
 
@@ -143,19 +144,19 @@ export class MatchEngine {
     this.dirty = true;
   }
 
-  private startMatch(): void {
+  private startMatch(now: number): void {
     this.reset();
     this.event = "Match start";
-    this.newGame(performance.now());
+    this.newGame(now);
   }
 
   /** Reset the score and restart the set (used by a passed reset vote). */
-  resetMatch(): void {
+  resetMatch(now: number): void {
     const ready = this.teamPlayers("A").length > 0 && this.teamPlayers("B").length > 0;
     this.reset();
     if (ready) {
       this.event = "Set reset";
-      this.newGame(performance.now());
+      this.newGame(now);
     }
   }
 
@@ -221,7 +222,9 @@ export class MatchEngine {
   /**
    * The server strikes the toss. `aimPoint` is where they aim on the ground; the
    * strike time relative to the top of the toss sets the Timing and how far the
-   * landing drifts long (late) or short (early). Null if no toss is in the air.
+   * landing drifts long (late) or short (early). `now` is when the strike happened (the
+   * room rewinds a human's click to the moment they saw); a time before the toss counts
+   * as its start. Null if no toss is in the air.
    */
   strikeServe(
     slot: Slot,
@@ -229,7 +232,7 @@ export class MatchEngine {
     aimPoint: Vec2,
   ): { launch: ServeLaunch; timing: Timing } | null {
     if (this.phase !== "serve" || !this.tossing || slot !== this.serverSlot) return null;
-    const t = (now - this.tossStartedAt) / 1000;
+    const t = Math.max(0, (now - this.tossStartedAt) / 1000);
     if (t > TOSS.expireS) return null; // too late: tick() calls it a missed toss
     const box = this.serviceBox()!;
     const timing = serveTiming(t);

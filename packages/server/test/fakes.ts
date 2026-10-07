@@ -42,7 +42,7 @@ export function sendInput(room: Room, id: string, partial: Partial<InputMsg> = {
     move: { x: 0, z: 0 },
     aim: { x: 0, z: 1 },
     shot: null,
-    view: 0,
+    view: room.serverTime, // the present: no rewind
     serve: false,
     ...partial,
   });

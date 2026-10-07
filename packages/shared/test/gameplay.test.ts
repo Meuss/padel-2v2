@@ -4,7 +4,6 @@ import {
   PLAYER_BOUNDS,
   TICK_DT,
   confineToHalf,
-  hitVelocity,
   normalizeMove,
   stepPlayer,
   swingConnects,
@@ -51,14 +50,6 @@ describe("swingConnects", () => {
   it("misses when the ball is out of reach", () => {
     expect(swingConnects(1, 1, -2, ball, 1.0)).toBe(false); // 3 away
     expect(swingConnects(5, 5, 5, ball, 1.0)).toBe(false);
-  });
-});
-
-describe("hitVelocity", () => {
-  it("scales horizontal aim by power and applies vertical lift", () => {
-    expect(hitVelocity({ x: 0, z: -1 }, 9, 4.5)).toEqual({ x: 0, y: 4.5, z: -9 });
-    const diag = hitVelocity({ x: 0.6, z: 0.8 }, 10, 3);
-    expect(diag).toEqual({ x: 6, y: 3, z: 8 });
   });
 });
 

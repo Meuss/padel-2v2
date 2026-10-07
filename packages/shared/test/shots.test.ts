@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  TOSS,
   judgeTiming,
   resolveKind,
   serveTarget,
@@ -94,11 +95,13 @@ describe("serveTarget", () => {
     expect(p.z).toBeCloseTo(6.55);
   });
   it("late serves go long", () => {
-    expect(serveTarget(aim, box, tossApex() + 0.25).z).toBeCloseTo(8.65);
+    // 0.25 s late is 0.15 s past the window: the deepest aim (6.55) plus 0.15 s of drift.
+    expect(serveTarget(aim, box, tossApex() + 0.25).z).toBeCloseTo(6.55 + 0.15 * TOSS.depthPerSecond);
   });
   it("early serves land short", () => {
-    expect(serveTarget(aim, box, tossApex() - 0.25).z).toBeCloseTo(4.45);
-    expect(serveTarget(aim, box, tossApex() - 0.32).z).toBeLessThan(4.45);
+    const short = 6.55 - 0.15 * TOSS.depthPerSecond;
+    expect(serveTarget(aim, box, tossApex() - 0.25).z).toBeCloseTo(short);
+    expect(serveTarget(aim, box, tossApex() - 0.32).z).toBeLessThan(short);
   });
   it("carries the side sign", () => {
     expect(serveTarget(aim, { ...box, side: -1 }, tossApex()).z).toBeCloseTo(-6.55);

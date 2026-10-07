@@ -50,15 +50,13 @@ export const PLAYER = {
   radius: 0.4,
   height: 1.8,
   speed: 6.5, // m/s
-  /** Reach within which a swing can connect with the ball (from body centre). */
+  /** Reach within which a swing can connect with the ball (from the racket point). */
   reach: 2.8,
+  /** Height (m) of the racket point a swing reaches from, above the player's feet. */
+  racketHeight: 1.0,
 } as const;
 
 export const SWING = {
-  /** Horizontal speed imparted to the ball on a successful hit (m/s). */
-  power: 8.5,
-  /** Upward speed added to a hit so the ball arcs (m/s). */
-  lift: 6,
   /** Cooldown between swings (ms). */
   cooldownMs: 300,
 } as const;
@@ -87,11 +85,12 @@ export const TOSS = {
   vy: 3.2, // m/s upward from SERVE.height
   expireS: 0.75, // toss falls back below the hand → "Missed the toss"
   perfectWindowS: 0.1, // |t - apex| for a clean serve
-  depthPerSecond: 14, // metres of depth error per second beyond the window (late → long, early → short)
+  depthPerSecond: 18, // metres of depth error per second beyond the window (late → long, early → short)
   boxMargin: 0.4, // the aim point is clamped this far (m) inside the service box
-  aimBeyondM: 4, // the serve aim point lies |server z| + this (m) along the aim: ~this far past the net
+  aimBeyondM: 6, // the serve aim point lies |server z| + this (m) along the aim: ~this far past the net
 } as const;
 
+/** Lag compensation: how far back a swing may be judged, and how much ball history the server keeps. */
 export const LAG = { maxRewindMs: 250, historyMs: 600 } as const;
 
 export const MATCH = {

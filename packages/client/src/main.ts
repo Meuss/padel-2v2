@@ -354,6 +354,13 @@ const net = new Net({
   },
   onSnapshot: (msg) => {
     interp.add(msg);
+    const shots = msg.shots ?? [];
+    for (const shot of shots) {
+      // Our own swing already played on the click, unless the server made it a Smash.
+      if (shot.slot === selfSlot && shot.kind !== "smash") continue;
+      scene.triggerSwing(shot.slot, shot.kind);
+    }
+    scene.onEvents(shots, msg.contacts ?? []);
     if (selfSlot) {
       const me = msg.players.find((p) => p.slot === selfSlot);
       if (me) predictor.reconcile({ x: me.pos.x, z: me.pos.z }, me.ack, selfSide(), selfLocked());
