@@ -70,17 +70,34 @@ export const SERVE = {
 } as const;
 
 export const SHOT = {
-  /** Ball height (m) at contact above which a swing becomes a Smash. */
+  /** Ball height (m) at contact above which (strictly) a swing becomes a Smash. */
   smashHeight: 2.1,
+  /** A high ball becomes a Smash only when struck at most this far (m) from the net. */
+  smashMaxDistM: 5.5,
   /** |time to closest approach| (s) within which Timing is "perfect". */
   perfectWindowS: 0.08,
   /** Drives and Lobs get at least the lift (m) to pass this far above the net tape. */
   netClearance: 0.45,
+  /** A Smash is lifted, if needed, to pass at least this far (m) above the net tape. */
+  smashNetMargin: 0.15,
+  /** A perfect Lob lands this far (m) past the net, whatever the hitter's depth. */
+  lobDepthPastNet: 7.5,
+  /**
+   * Air drag (1/s) the shot maths allow for: the ball's own linear damping, so a ball
+   * keeps (1 - e^{-ct}) / (ct) of its launch speed on average over t seconds.
+   */
+  dragAllowance: BALL.linearDamping,
+  /** The share of the aim pointing at the net never counts as less than this (near-sideways aims). */
+  minAimTowardNet: 0.3,
   drive: { power: 12.5, lift: 3.6 },
-  lob: { power: 7.0, lift: 9.5 },
+  /** `power` is the Lob's speed when there is no contact to aim from; otherwise it is solved within [minPower, maxPower]. */
+  lob: { power: 7.0, lift: 9.5, minPower: 4.0, maxPower: 13.0 },
   smash: { power: 16.0, lift: -1.5 },
-  /** Multipliers applied for early/late Timing. */
-  offTiming: { power: 0.82, lift: 0.9, aimErrorDeg: 9 },
+  /**
+   * Early/late Timing: Drive and Smash scale power and lift; every shot's aim rotates by
+   * aimErrorDeg. A Lob instead lands lobDepthErrorM (m) short (early) or long (late).
+   */
+  offTiming: { power: 0.82, lift: 0.9, aimErrorDeg: 9, lobDepthErrorM: 2.0 },
 } as const;
 
 /** Bot decision-making: their fixed "decent" skill and shot choice. */

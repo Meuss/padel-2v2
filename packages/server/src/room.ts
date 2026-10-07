@@ -627,12 +627,13 @@ export class Room {
       // hitting your own serve, or a double touch — must not).
       if (inRally && !this.match.hit(ps.slot, ps.team, now)) continue;
 
-      const kind = resolveKind(requested, seen.pos.y);
+      // Struck on our own side: aim from the contact (a ball reached across the net is at it).
+      const ownSide = Math.sign(seen.pos.z) === ps.side;
+      const distToNet = ownSide ? Math.abs(seen.pos.z) : 0;
+      const kind = resolveKind(requested, seen.pos.y, distToNet);
       const rel = { x: seen.pos.x - racket.x, y: seen.pos.y - racket.y, z: seen.pos.z - racket.z };
       const timing = judgeTiming(timeToClosest(rel, seen.vel));
-      // Struck on our own side: lift enough to clear the net (the far side can't happen; table lift).
-      const contact =
-        Math.sign(seen.pos.z) === ps.side ? { y: seen.pos.y, distToNet: Math.abs(seen.pos.z) } : undefined;
+      const contact = ownSide ? { y: seen.pos.y, distToNet } : undefined;
       const v = shotVelocity(kind, timing, this.shotAim(ps), contact);
       this.physics.setBallVelocity(v.x, v.y, v.z);
       this.hitSeq++;

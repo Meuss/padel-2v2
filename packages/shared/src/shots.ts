@@ -1,5 +1,7 @@
-import { COURT, GRAVITY, SHOT, TOSS } from "./constants.js";
+import { BALL, COURT, GRAVITY, SHOT, TOSS } from "./constants.js";
 import type { Vec2, Vec3 } from "./messages.js";
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export type ShotKind = "drive" | "lob" | "smash" | "serve";
 export type Timing = "early" | "perfect" | "late";
@@ -28,9 +30,16 @@ export function judgeTiming(tClosest: number): Timing {
   return tClosest > 0 ? "early" : "late";
 }
 
-/** Which shot a swing becomes: smash if the ball is high enough, else the requested kind. */
-export function resolveKind(requested: "drive" | "lob", ballHeight: number): "drive" | "lob" | "smash" {
-  return ballHeight > SHOT.smashHeight ? "smash" : requested;
+/**
+ * Which shot a swing becomes: a Smash if the ball is above SHOT.smashHeight (strictly) and
+ * struck within SHOT.smashMaxDistM of the net, else the requested kind.
+ */
+export function resolveKind(
+  requested: "drive" | "lob",
+  ballHeight: number,
+  distToNet: number,
+): "drive" | "lob" | "smash" {
+  return ballHeight > SHOT.smashHeight && distToNet <= SHOT.smashMaxDistM ? "smash" : requested;
 }
 
 /** Where a shot is struck: ball height and distance (m) to the net plane on the hitter's side. */
@@ -40,25 +49,58 @@ export interface ShotContact {
 }
 
 /**
- * Vertical launch speed for a ball struck at contactY, distToNet from the net, moving at
- * horizontalSpeed, to pass the net plane at COURT.netHeight + SHOT.netClearance (no drag).
+ * The share of its launch speed a ball keeps on average over t seconds of flight, allowing
+ * for SHOT.dragAllowance (exponential decay): (1 - e^{-ct}) / (ct), 1 with no drag.
  */
-export function clearanceLift(
-  _kind: "drive" | "lob",
-  contactY: number,
-  distToNet: number,
-  horizontalSpeed: number,
-): number {
-  const t = distToNet / horizontalSpeed;
-  return (COURT.netHeight + SHOT.netClearance - contactY + 0.5 * GRAVITY * t * t) / t;
+export function dragKeep(t: number): number {
+  const ct = SHOT.dragAllowance * t;
+  return ct > 1e-9 ? (1 - Math.exp(-ct)) / ct : 1;
 }
 
 /**
- * Ball velocity for a shot. `aim` is a unit world-space XZ direction. Off-timing scales power and
- * lift and rotates the aim around +Y by aimErrorDeg. Sign convention: with x' = x·cos a - z·sin a,
- * early uses a = +aimErrorDeg (aim +z drifts to x < 0) and late uses a = -aimErrorDeg (x > 0).
- * With a `contact`, a Drive or Lob gets at least the lift to clear the net at the table power
- * (before off-timing scales it, so a mistimed shot can still find the net). Smash ignores it.
+ * Vertical launch speed for a ball struck at contactY, distToNet from the net, approaching it
+ * at speedTowardNet (the horizontal speed component toward the net), to pass the net plane
+ * `clearance` above the tape. The time to the net allows for drag (to first order).
+ */
+export function clearanceLift(
+  contactY: number,
+  distToNet: number,
+  speedTowardNet: number,
+  clearance: number = SHOT.netClearance,
+): number {
+  const t0 = distToNet / speedTowardNet;
+  const t = t0 / dragKeep(t0);
+  return (COURT.netHeight + clearance - contactY + 0.5 * GRAVITY * t * t) / t;
+}
+
+/** |aim.z|, floored at SHOT.minAimTowardNet so a near-sideways aim can't ask for an unbounded shot. */
+const towardNet = (aim: Vec2) => Math.max(Math.abs(aim.z), SHOT.minAimTowardNet);
+
+/**
+ * Horizontal launch speed for a Lob struck at contactY, distToNet from the net, along `aim`,
+ * to land depthPastNet (m, along z) beyond the net: drag-free flight time with SHOT.lob.lift
+ * under GRAVITY down to the ball's radius, horizontal distance allowing for drag. Clamped to
+ * [SHOT.lob.minPower, SHOT.lob.maxPower].
+ */
+export function lobPower(contactY: number, distToNet: number, aim: Vec2, depthPastNet: number): number {
+  const vy = SHOT.lob.lift;
+  const drop = Math.max(0, contactY - BALL.radius);
+  const t = (vy + Math.sqrt(vy * vy + 2 * GRAVITY * drop)) / GRAVITY;
+  const range = (distToNet + depthPastNet) / towardNet(aim);
+  return clamp(range / (t * dragKeep(t)), SHOT.lob.minPower, SHOT.lob.maxPower);
+}
+
+/**
+ * Ball velocity for a shot. `aim` is a unit world-space XZ direction. Off-timing rotates the aim
+ * around +Y by aimErrorDeg. Sign convention: with x' = x·cos a - z·sin a, early uses
+ * a = +aimErrorDeg (aim +z drifts to x < 0) and late uses a = -aimErrorDeg (x > 0).
+ * With a `contact` on the hitter's side:
+ * - a Drive gets at least the lift to clear the net at the table power (before off-timing scales
+ *   power and lift, so a mistimed Drive can still find the net);
+ * - a Lob's power is solved to land SHOT.lobDepthPastNet past the net, minus (early) or plus
+ *   (late) SHOT.offTiming.lobDepthErrorM, with the table lift (raised to clear the net if needed);
+ * - a Smash's lift is raised, if needed, to pass SHOT.smashNetMargin above the tape.
+ * Without a contact, every shot uses its table power and lift, scaled when off-timed.
  */
 export function shotVelocity(
   kind: "drive" | "lob" | "smash",
@@ -68,21 +110,34 @@ export function shotVelocity(
 ): Vec3 {
   const base = SHOT[kind];
   const off = timing !== "perfect";
-  let lift: number = base.lift;
-  if (contact && kind !== "smash" && contact.distToNet > 0) {
-    lift = Math.max(lift, clearanceLift(kind, contact.y, contact.distToNet, base.power));
-  }
-  const power = off ? base.power * SHOT.offTiming.power : base.power;
-  if (off) lift *= SHOT.offTiming.lift;
   const deg = timing === "early" ? SHOT.offTiming.aimErrorDeg : timing === "late" ? -SHOT.offTiming.aimErrorDeg : 0;
   const a = (deg * Math.PI) / 180;
   const cos = Math.cos(a);
   const sin = Math.sin(a);
-  return {
-    x: (aim.x * cos - aim.z * sin) * power,
-    y: lift,
-    z: (aim.x * sin + aim.z * cos) * power,
-  };
+  const dir: Vec2 = { x: aim.x * cos - aim.z * sin, z: aim.x * sin + aim.z * cos };
+  const hasContact = contact !== undefined && contact.distToNet > 0;
+
+  let power: number = base.power;
+  let lift: number = base.lift;
+  if (kind === "lob" && hasContact) {
+    const err = SHOT.offTiming.lobDepthErrorM;
+    const depth = SHOT.lobDepthPastNet + (timing === "early" ? -err : timing === "late" ? err : 0);
+    power = lobPower(contact.y, contact.distToNet, dir, depth);
+    lift = Math.max(lift, clearanceLift(contact.y, contact.distToNet, towardNet(dir) * power));
+  } else {
+    if (kind === "drive" && hasContact) {
+      lift = Math.max(lift, clearanceLift(contact.y, contact.distToNet, towardNet(aim) * power));
+    }
+    if (off) {
+      power *= SHOT.offTiming.power;
+      lift *= SHOT.offTiming.lift;
+    }
+    if (kind === "smash" && hasContact) {
+      const floor = clearanceLift(contact.y, contact.distToNet, towardNet(dir) * power, SHOT.smashNetMargin);
+      lift = Math.max(lift, floor);
+    }
+  }
+  return { x: dir.x * power, y: lift, z: dir.z * power };
 }
 
 /** Toss height above SERVE.height at t seconds after the toss starts (kinematic). */
@@ -102,7 +157,6 @@ export function serveTiming(t: number): Timing {
   return d > 0 ? "late" : "early";
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
  * Where a struck serve should land. The aim point is clamped TOSS.boxMargin inside the box; beyond the
