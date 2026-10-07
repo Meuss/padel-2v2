@@ -34,6 +34,9 @@ export const INTERP_DELAY_MS = 100;
 
 export const MAX_PLAYERS = 4;
 
+/** Longest nickname, in Unicode code points. Matches the client's input maxlength. */
+export const NAME_MAX_LENGTH = 16;
+
 export const BALL = {
   radius: 0.07,
   restitution: 0.92, // bouncy — high, lively rebounds

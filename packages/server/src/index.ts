@@ -14,6 +14,7 @@ import {
   TICK_RATE,
   decodeClient,
   encode,
+  sanitizeName,
   type WelcomeMsg,
 } from "@padel/shared";
 import { Room } from "./room.js";
@@ -57,7 +58,7 @@ wss.on("connection", (ws) => {
       if (joined) return;
       joined = true;
       room.markActivity(id);
-      client.name = (msg.name ?? "").trim().slice(0, 20) || `Player ${id}`;
+      client.name = sanitizeName(msg.name, `Player ${id}`);
       const ps = room.claimSlot(id, client.name);
       const welcome: WelcomeMsg = {
         t: "welcome",

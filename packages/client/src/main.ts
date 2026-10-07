@@ -6,6 +6,7 @@
 import {
   PLAYER,
   REACTIONS,
+  sanitizeName,
   type MatchMsg,
   type Role,
   type Slot,
@@ -148,35 +149,46 @@ function maybeFlash(): void {
   const e = match.event;
   if (!e || e === lastFlashed || match.phase === "rally") return;
   lastFlashed = e;
-  flash.innerHTML =
-    `<div>${e}</div>` +
-    (match.reason
-      ? `<div style="font-size:16px;font-weight:600;opacity:.9;margin-top:6px">${match.reason}</div>`
-      : "");
+  const title = document.createElement("div");
+  title.textContent = e;
+  flash.replaceChildren(title);
+  if (match.reason) {
+    const why = document.createElement("div");
+    why.style.cssText = "font-size:16px;font-weight:600;opacity:.9;margin-top:6px";
+    why.textContent = match.reason;
+    flash.append(why);
+  }
   flash.classList.add("show");
   window.clearTimeout(flashTimer);
   flashTimer = window.setTimeout(() => flash.classList.remove("show"), 2000);
 }
 
 function renderVote(active: boolean, initiator = "", accepted = 0, needed = 0): void {
-  if (active && role === "player") {
-    votepanel.style.display = "block";
-    votepanel.innerHTML = `
-      <div><strong>${initiator}</strong> wants to reset the set.</div>
-      <div style="opacity:.8;margin-top:4px">${accepted}/${needed} players accepted</div>
-      <div class="actions">
-        <button class="accept">Accept</button>
-        <button class="decline">Decline</button>
-      </div>`;
-    votepanel.querySelector(".accept")!.addEventListener("click", () =>
-      net.send({ t: "votereset" }),
-    );
-    votepanel.querySelector(".decline")!.addEventListener("click", () =>
-      net.send({ t: "votedecline" }),
-    );
-  } else {
+  if (!(active && role === "player")) {
     votepanel.style.display = "none";
+    return;
   }
+  // Built with DOM nodes: the initiator's nickname is user input.
+  const who = document.createElement("strong");
+  who.textContent = initiator;
+  const line = document.createElement("div");
+  line.append(who, " wants to reset the set.");
+  const count = document.createElement("div");
+  count.style.cssText = "opacity:.8;margin-top:4px";
+  count.textContent = `${accepted}/${needed} players accepted`;
+  const accept = document.createElement("button");
+  accept.className = "accept";
+  accept.textContent = "Accept";
+  accept.addEventListener("click", () => net.send({ t: "votereset" }));
+  const decline = document.createElement("button");
+  decline.className = "decline";
+  decline.textContent = "Decline";
+  decline.addEventListener("click", () => net.send({ t: "votedecline" }));
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  actions.append(accept, decline);
+  votepanel.replaceChildren(line, count, actions);
+  votepanel.style.display = "block";
 }
 
 function showLoading(status: ConnStatus): void {
@@ -269,7 +281,7 @@ function showNickname(message = ""): void {
 }
 
 function play(): void {
-  const name = nickInput.value.trim().slice(0, 16) || "Player";
+  const name = sanitizeName(nickInput.value, "Player");
   nickname.style.display = "none";
   net.connect(name);
 }
