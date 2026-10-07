@@ -15,14 +15,15 @@ export function playerCamPose(
   ball: { x: number; z: number } | null,
   side: -1 | 1,
 ): CamPose {
-  const pos = new THREE.Vector3(clamp(player.x * 0.35, -3, 3), 10, side * 22);
-  // Aim a little past the net-ward side of the player's half; the ball pulls the look point
+  const pos = new THREE.Vector3(clamp(player.x * 0.35, -3, 3), 7, side * 17);
+  // Work in the player's frame (u grows toward the net). Aim 2 m behind the net on the
+  // player's half so the near pair sits low in frame; the ball pulls the look point
   // toward the far end, but never beyond 4 m past the net.
-  let lookZ = -side * 2;
-  if (ball) lookZ += (ball.z - lookZ) * 0.25;
-  lookZ = -side * Math.min(4, -side * lookZ);
-  const look = new THREE.Vector3(player.x * 0.2, 0.8, lookZ);
-  return { pos, look, fov: 32 };
+  let u = -2;
+  if (ball) u += (-side * ball.z - u) * 0.25;
+  u = Math.min(4, u);
+  const look = new THREE.Vector3(player.x * 0.2, 0.8, -side * u);
+  return { pos, look, fov: 30 };
 }
 
 /** Broadcast cam for spectators: elevated, behind the z<0 end, gently tracking the ball. Pure. */
@@ -30,9 +31,9 @@ export function broadcastCamPose(ball: { x: number; z: number } | null): CamPose
   const bx = ball?.x ?? 0;
   const bz = ball?.z ?? 0;
   return {
-    pos: new THREE.Vector3(clamp(bx * 0.1, -1, 1), 11, -19),
-    look: new THREE.Vector3(clamp(bx * 0.3, -1.5, 1.5), 0.5, 2 + clamp(bz * 0.1, -1, 1)),
-    fov: 36,
+    pos: new THREE.Vector3(clamp(bx * 0.1, -1, 1), 12, -21),
+    look: new THREE.Vector3(clamp(bx * 0.3, -1.5, 1.5), 0.3, 0.5 + clamp(bz * 0.1, -1, 1)),
+    fov: 38,
   };
 }
 
@@ -64,6 +65,11 @@ export class CameraRig {
     return broadcastCamPose(this.ball);
   }
 
+  /** The camera's current z, for choosing the end wall to cut away. */
+  get cameraZ(): number {
+    return this.camera.position.z;
+  }
+
   update(dtSec: number): void {
     const t = this.target();
     const kp = 1 - Math.exp(-dtSec * 6);
@@ -77,4 +83,9 @@ export class CameraRig {
       this.camera.updateProjectionMatrix();
     }
   }
+}
+
+/** Which end wall to cut away: the one on the camera's side. */
+export function cutawaySide(cameraZ: number): -1 | 1 {
+  return cameraZ < 0 ? -1 : 1;
 }

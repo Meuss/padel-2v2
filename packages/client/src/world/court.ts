@@ -84,7 +84,11 @@ function fenceTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Quality): THREE.Group {
+export function buildCourt(
+  scene: THREE.Scene,
+  court: CourtConfig,
+  quality: Quality,
+): { root: THREE.Group; endWalls: EndWalls } {
   const root = new THREE.Group();
   root.name = "court";
   const halfW = court.width / 2;
@@ -131,21 +135,33 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
   const glassParts: THREE.BufferGeometry[] = [];
   const fenceParts: THREE.BufferGeometry[] = [];
   const steelParts: THREE.BufferGeometry[] = [];
+  // Each end's back wall (and the corner returns within 2 m of it) is collected apart so it
+  // can be faded when the camera sits behind it.
+  const endParts = [-1, 1].map(() => ({
+    glass: [] as THREE.BufferGeometry[],
+    fence: [] as THREE.BufferGeometry[],
+    steel: [] as THREE.BufferGeometry[],
+  }));
+  const endOf = (z: number) => endParts[z < 0 ? 0 : 1]!;
+  const inEnd = (z: number) => Math.abs(z) >= halfL - 2 - 1e-6;
+  const railGeo = (len: number, x: number, ry: number, z: number, alongZ: boolean) =>
+    placed(new THREE.BoxGeometry(len, RAIL, RAIL), x, ry, z, alongZ ? Math.PI / 2 : 0);
   const rail = (len: number, x: number, ry: number, z: number, alongZ: boolean) =>
-    steelParts.push(placed(new THREE.BoxGeometry(len, RAIL, RAIL), x, ry, z, alongZ ? Math.PI / 2 : 0));
+    (inEnd(z) ? endOf(z).steel : steelParts).push(railGeo(len, x, ry, z, alongZ));
 
   for (const z of [-halfL, halfL]) {
-    glassParts.push(placed(new THREE.PlaneGeometry(court.width, glassH), 0, glassH / 2, z));
-    fenceParts.push(placed(cellPanel(court.width, wallH - glassH, FENCE_CELL), 0, (glassH + wallH) / 2, z));
+    const e = endOf(z);
+    e.glass.push(placed(new THREE.PlaneGeometry(court.width, glassH), 0, glassH / 2, z));
+    e.fence.push(placed(cellPanel(court.width, wallH - glassH, FENCE_CELL), 0, (glassH + wallH) / 2, z));
     rail(court.width, 0, glassH, z, false);
   }
   for (const x of [-halfW, halfW]) {
     for (const s of [-1, 1]) {
       const zTall = s * (halfL - 1);
       const zStep = s * (halfL - 3);
-      glassParts.push(placed(new THREE.PlaneGeometry(2, glassH), x, glassH / 2, zTall, Math.PI / 2));
+      endOf(zTall).glass.push(placed(new THREE.PlaneGeometry(2, glassH), x, glassH / 2, zTall, Math.PI / 2));
       glassParts.push(placed(new THREE.PlaneGeometry(2, stepH), x, stepH / 2, zStep, Math.PI / 2));
-      fenceParts.push(placed(cellPanel(2, wallH - glassH, FENCE_CELL), x, (glassH + wallH) / 2, zTall, Math.PI / 2));
+      endOf(zTall).fence.push(placed(cellPanel(2, wallH - glassH, FENCE_CELL), x, (glassH + wallH) / 2, zTall, Math.PI / 2));
       fenceParts.push(placed(cellPanel(2, wallH - stepH, FENCE_CELL), x, (stepH + wallH) / 2, zStep, Math.PI / 2));
       rail(2, x, glassH, zTall, true);
       rail(2, x, stepH, zStep, true);
@@ -156,7 +172,7 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
 
   // Posts every 2 m around the perimeter (corners once), and the top rail.
   const postAt = (x: number, z: number) =>
-    steelParts.push(placed(new THREE.BoxGeometry(POST, wallH, POST), x, wallH / 2, z));
+    (inEnd(z) ? endOf(z).steel : steelParts).push(placed(new THREE.BoxGeometry(POST, wallH, POST), x, wallH / 2, z));
   const nx = Math.round(court.width / 2);
   const nz = Math.round(court.length / 2);
   for (let i = 0; i <= nx; i++) {
@@ -171,7 +187,7 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
   }
   rail(court.width, 0, wallH, -halfL, false);
   rail(court.width, 0, wallH, halfL, false);
-  rail(court.length, -halfW, wallH, 0, true);
+  rail(court.length, -halfW, wallH, 0, true); // (z=0: stays with the shared steel)
   rail(court.length, halfW, wallH, 0, true);
 
   // Net posts join the steel; the net itself joins the fence with finer cells.
@@ -188,8 +204,7 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
   steel.castShadow = true;
   root.add(steel);
 
-  root.add(
-    new THREE.Mesh(
+  const fenceMesh = new THREE.Mesh(
       merged(fenceParts),
       new THREE.MeshStandardMaterial({
         color: PALETTE.steel,
@@ -200,8 +215,8 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
         depthWrite: false,
         side: THREE.DoubleSide,
       }),
-    ),
-  );
+    );
+  root.add(fenceMesh);
 
   const glass = new THREE.Mesh(
     merged(glassParts),
@@ -220,6 +235,71 @@ export function buildCourt(scene: THREE.Scene, court: CourtConfig, quality: Qual
   glass.renderOrder = 1; // after the fence, so its reflections sit on top
   root.add(glass);
 
+  const endWalls = new EndWalls();
+  const steelMat = steel.material as THREE.MeshStandardMaterial;
+  const fenceSrc = fenceMesh.material as THREE.MeshStandardMaterial;
+  const glassMat = glass.material as THREE.MeshPhysicalMaterial;
+  for (const [i, parts] of endParts.entries()) {
+    const g = new THREE.Group();
+    g.name = i === 0 ? "endWallNeg" : "endWallPos";
+    const m = {
+      steel: steelMat.clone(),
+      fence: fenceSrc.clone(),
+      glass: glassMat.clone(),
+    };
+    const stl = new THREE.Mesh(merged(parts.steel), m.steel);
+    stl.castShadow = true;
+    const fen = new THREE.Mesh(merged(parts.fence), m.fence);
+    const gl = new THREE.Mesh(merged(parts.glass), m.glass);
+    gl.renderOrder = 1;
+    g.add(stl, fen, gl);
+    root.add(g);
+    endWalls.add(i === 0 ? -1 : 1, m);
+  }
+
   scene.add(root);
-  return root;
+  return { root, endWalls };
+}
+
+interface EndMaterials {
+  steel: THREE.MeshStandardMaterial;
+  fence: THREE.MeshStandardMaterial;
+  glass: THREE.MeshPhysicalMaterial;
+}
+
+const CUT_SECONDS = 0.3;
+const CUT_OPACITY = { fence: 0.12, steel: 0.15, glass: 0.05, glassSolid: 0.12 };
+
+/** The two back walls, one of which is faded out while the camera sits behind it. */
+export class EndWalls {
+  private ends = new Map<-1 | 1, { mats: EndMaterials; cut: number }>();
+
+  add(side: -1 | 1, mats: EndMaterials): void {
+    this.ends.set(side, { mats, cut: 0 });
+  }
+
+  /** Cut-away amount (0 solid, 1 fully faded) of the end on `side`. */
+  cutAmount(side: -1 | 1): number {
+    return this.ends.get(side)?.cut ?? 0;
+  }
+
+  /** Fade the `cutSide` end out and the other in, over about 0.3 s. */
+  update(cutSide: -1 | 1, dtSec: number): void {
+    for (const [side, e] of this.ends) {
+      const target = side === cutSide ? 1 : 0;
+      const step = dtSec / CUT_SECONDS;
+      e.cut = target > e.cut ? Math.min(target, e.cut + step) : Math.max(target, e.cut - step);
+      const set = (m: THREE.Material & { opacity: number }, solid: number, faded: number) => {
+        const transparent = e.cut > 0 || m.transparent;
+        m.opacity = solid + (faded - solid) * e.cut;
+        if (m.transparent !== transparent) {
+          m.transparent = transparent;
+          m.needsUpdate = true;
+        }
+      };
+      set(e.mats.fence, 1, CUT_OPACITY.fence);
+      set(e.mats.steel, 1, CUT_OPACITY.steel);
+      set(e.mats.glass, CUT_OPACITY.glassSolid, CUT_OPACITY.glass);
+    }
+  }
 }

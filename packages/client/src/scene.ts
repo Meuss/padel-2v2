@@ -17,10 +17,10 @@ import {
   type Vec2,
 } from "@padel/shared";
 import { Arena } from "./world/arena.js";
-import { broadcastCamPose, CameraRig } from "./world/cameras.js";
+import { broadcastCamPose, CameraRig, cutawaySide } from "./world/cameras.js";
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
-import { buildCourt as buildCourtMeshes } from "./world/court.js";
+import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js";
 
 export class PadelScene {
   readonly scene = new THREE.Scene();
@@ -34,6 +34,7 @@ export class PadelScene {
   private frameDt = 1 / 60;
   private court: CourtConfig | null = null;
   private rig: CameraRig;
+  private endWalls: EndWalls | null = null;
   private camTeam: Team = "A";
   private camPlayer: { x: number; z: number } | null = null;
   private camBall: { x: number; z: number } | null = null;
@@ -89,7 +90,7 @@ export class PadelScene {
     // The court is static and a Welcome arrives on every (re)connect: build once.
     if (this.court) return;
     this.court = court;
-    buildCourtMeshes(this.scene, court, "high");
+    this.endWalls = buildCourtMeshes(this.scene, court, "high").endWalls;
   }
 
   /** Update the LED boards (redraws only when their messages change). */
@@ -289,6 +290,7 @@ export class PadelScene {
     for (const a of this.players.values()) a.update(dt);
     this.updateMarkers(now);
     this.rig.update(dt);
+    this.endWalls?.update(cutawaySide(this.rig.cameraZ), dt);
     this.renderer.render(this.scene, this.camera);
   }
 
