@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AvatarFactory, pickLocomotion, shirtName, type ModelSource } from "../src/world/avatar.js";
 import { PALETTE } from "../src/world/palette.js";
 
@@ -148,6 +148,89 @@ describe("AvatarFactory", () => {
       return out;
     };
     expect(meshesOf(a.root)[0]).not.toBe(meshesOf(b.root)[0]);
+  });
+});
+
+/** Skinned meshes under an avatar root: one once the mannequin is in, none on the fallback. */
+function skinnedOf(root: THREE.Object3D): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  root.traverse((o) => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) out.push(o);
+  });
+  return out;
+}
+
+describe("AvatarFactory recovery", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("upgrades every waiting avatar when a later load succeeds", async () => {
+    let loads = 0;
+    const model = syntheticModel();
+    const source: ModelSource = {
+      load: () => (++loads === 1 ? Promise.reject(new Error("cold start")) : Promise.resolve(model)),
+    };
+    const factory = new AvatarFactory(source);
+    const a = factory.create("A1", "A"); // first load fails
+    await flush();
+    expect(skinnedOf(a.root)).toHaveLength(0);
+    const b = factory.create("B1", "B"); // retries the load, which succeeds
+    await flush();
+    expect(loads).toBe(2);
+    expect(skinnedOf(a.root)).toHaveLength(1);
+    expect(skinnedOf(b.root)).toHaveLength(1);
+  });
+
+  it("retries a failed load once after 5 s, without a new avatar, and upgrades all waiting avatars", async () => {
+    vi.useFakeTimers();
+    let loads = 0;
+    const model = syntheticModel();
+    const source: ModelSource = {
+      load: () => (++loads === 1 ? Promise.reject(new Error("cold start")) : Promise.resolve(model)),
+    };
+    const factory = new AvatarFactory(source);
+    const a = factory.create("A1", "A");
+    const b = factory.create("A2", "A");
+    await vi.advanceTimersByTimeAsync(4900);
+    expect(loads).toBe(1);
+    expect(skinnedOf(a.root)).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(loads).toBe(2);
+    expect(skinnedOf(a.root)).toHaveLength(1);
+    expect(skinnedOf(b.root)).toHaveLength(1);
+  });
+
+  it("retries automatically only once", async () => {
+    vi.useFakeTimers();
+    let loads = 0;
+    const factory = new AvatarFactory({
+      load: () => {
+        loads++;
+        return Promise.reject(new Error("offline"));
+      },
+    });
+    factory.create("A1", "A");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(loads).toBe(2);
+  });
+
+  it("adds no body to an avatar disposed before the model arrives", async () => {
+    const model = syntheticModel();
+    let resolve!: (m: typeof model) => void;
+    const source: ModelSource = { load: () => new Promise((r) => (resolve = r)) };
+    const factory = new AvatarFactory(source);
+    const avatar = factory.create("B2", "B");
+    const parent = new THREE.Group();
+    parent.add(avatar.root);
+    avatar.dispose();
+    resolve(model);
+    await flush();
+    expect(skinnedOf(avatar.root)).toHaveLength(0);
+    expect(avatar.root.parent).toBeNull();
+    expect(parent.children).toHaveLength(0);
+    // A later avatar still gets the mannequin.
+    expect(skinnedOf(factory.create("A1", "A").root)).toHaveLength(1);
   });
 });
 

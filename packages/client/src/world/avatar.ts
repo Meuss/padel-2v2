@@ -328,37 +328,58 @@ function prepare(model: { scene: THREE.Object3D; animations: THREE.AnimationClip
   return { scene: model.scene, scale, clips };
 }
 
+/** Wait after a failed model load before the one automatic retry. */
+const RETRY_MS = 5000;
+
 export class AvatarFactory {
-  private model: Promise<PreparedModel> | null = null;
+  private model: PreparedModel | null = null;
+  private loading = false;
+  private retried = false;
+  /** Live avatars still on the fallback body, upgraded together when the model arrives. */
+  private waiting = new Set<Avatar>();
 
   constructor(private source: ModelSource) {}
 
   /** Returns immediately: a fallback avatar now, upgraded in place when the model resolves. Never throws. */
   create(slot: Slot, team: Team): Avatar {
-    const avatar = new Avatar(slot, team);
-    this.loadModel().then(
-      (m) => avatar.upgrade(m),
-      () => {},
-    );
+    const avatar = new Avatar(slot, team, () => this.waiting.delete(avatar));
+    if (this.model) {
+      avatar.upgrade(this.model);
+    } else {
+      this.waiting.add(avatar);
+      this.load();
+    }
     return avatar;
   }
 
-  private loadModel(): Promise<PreparedModel> {
-    if (!this.model) {
-      let p: Promise<PreparedModel>;
-      try {
-        p = this.source.load().then(prepare);
-      } catch (e) {
-        p = Promise.reject(e);
-      }
-      this.model = p;
-      p.catch((e: unknown) => {
-        // Keep the fallback players; the next avatar created retries the load.
-        if (this.model === p) this.model = null;
-        if (import.meta.env.MODE !== "test") console.warn("Player model unavailable, using fallback avatars", e);
-      });
+  /** Start a load unless one is running. On success every waiting avatar is upgraded. */
+  private load(): void {
+    if (this.loading || this.model) return;
+    this.loading = true;
+    let p: Promise<PreparedModel>;
+    try {
+      p = this.source.load().then(prepare);
+    } catch (e) {
+      p = Promise.reject(e);
     }
-    return this.model;
+    p.then(
+      (m) => {
+        this.loading = false;
+        this.model = m;
+        for (const avatar of this.waiting) avatar.upgrade(m);
+        this.waiting.clear();
+      },
+      (e: unknown) => {
+        // Keep the fallback players. The next avatar created retries the load, and so
+        // does one automatic retry a few seconds later (a Render cold start, a blip).
+        this.loading = false;
+        if (import.meta.env.MODE !== "test") console.warn("Player model unavailable, using fallback avatars", e);
+        if (!this.retried) {
+          this.retried = true;
+          setTimeout(() => this.load(), RETRY_MS);
+        }
+      },
+    );
   }
 }
 
@@ -387,6 +408,8 @@ export class Avatar {
   constructor(
     readonly slot: Slot,
     private team: Team,
+    /** Called once from `dispose` (the factory stops tracking the avatar). */
+    private onDispose: () => void = () => {},
   ) {
     this.root.name = `player-${slot}`;
     this.fallback = new FallbackBody(team);
@@ -488,7 +511,9 @@ export class Avatar {
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
+    this.onDispose();
     this.root.removeFromParent();
     this.fallback?.dispose();
     this.fallback = null;
