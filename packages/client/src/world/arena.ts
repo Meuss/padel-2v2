@@ -28,10 +28,15 @@ const RIG_HEAD_Y = 4.6;
 const RIG_X = [-11, -4, 4, 11];
 const CHEER_SEC = 2;
 const IDLE_STEP_SEC = 0.1; // idle breathing at 10 Hz
-// Muted, low-value shirts so the crowd reads as a dark mass behind the bright court.
-const CROWD_COLORS = ["#0b0f1a", "#101a2e", "#16181d", "#2a1214", "#23262c", "#0e1014", "#152038"];
+// Muted mid-low shirts: the crowd reads as a mass of people from the Player cam,
+// still well below the bright court.
+const CROWD_COLORS = ["#2b3a5c", "#3a4a6e", "#45474f", "#6a3236", "#565a63", "#33363d", "#2f4c80", "#6b5a3e"];
 /** Lambert multiplier on every shirt: keeps the crowd back even under the key light. */
-const CROWD_DIM = "#b4b4b4";
+const CROWD_DIM = "#c8c8c8";
+/** How high (m) the crowd jumps on a full-intensity cheer. */
+const CHEER_JUMP_M = 0.42;
+/** Emissive lift on the crowd at the peak of a full-intensity cheer (flashes, raised arms). */
+const CHEER_GLOW = new THREE.Color("#3a3f4c");
 const SHADOW_MAP = { high: 2048, low: 1024 } as const;
 
 /** Small deterministic PRNG so the crowd layout is identical on every load. */
@@ -81,7 +86,7 @@ export class Arena {
   private ribbonTex: THREE.CanvasTexture;
   private ribbonCtx: CanvasRenderingContext2D;
   private messagesKey = "";
-  private crowd: THREE.InstancedMesh;
+  private crowd: THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>;
   private baseY: Float32Array;
   private phase: Float32Array;
   private time = 0;
@@ -177,11 +182,13 @@ export class Arena {
     const arr = m.array as Float32Array;
     if (this.cheerAge < CHEER_SEC) {
       this.cheerAge += dt;
-      const amp = 0.25 * this.cheerLevel * Math.max(0, 1 - this.cheerAge / CHEER_SEC);
+      const level = this.cheerLevel * Math.max(0, 1 - this.cheerAge / CHEER_SEC);
+      const amp = CHEER_JUMP_M * level;
       for (let i = 0; i < this.crowd.count; i++) {
         arr[i * 16 + 13] = this.baseY[i]! + amp * Math.abs(Math.sin(this.time * 7 + this.phase[i]!));
       }
       m.needsUpdate = true;
+      this.crowd.material.emissive.copy(CHEER_GLOW).multiplyScalar(level);
       return;
     }
     this.idleAcc += dt;
@@ -242,7 +249,10 @@ export class Arena {
     return kept.concat(dropped);
   }
 
-  private addCrowd(scene: THREE.Scene, seats: THREE.Vector3[]): THREE.InstancedMesh {
+  private addCrowd(
+    scene: THREE.Scene,
+    seats: THREE.Vector3[],
+  ): THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshLambertMaterial> {
     const rand = mulberry32(0xc0ffee);
     const mesh = new THREE.InstancedMesh(
       spectatorGeometry(),

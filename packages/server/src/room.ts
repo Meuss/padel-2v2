@@ -94,6 +94,7 @@ interface PlayerSlot {
   inputQueue: InputMsg[]; // humans: one is consumed per tick, in order
   ack: number | undefined; // seq of the last input applied (humans)
   stepCredit: number; // humans: token bucket limiting inputs consumed per second
+  starvedTicks: number; // humans: consecutive ticks that found the input queue empty
   /** Shot requested since the last tick that consumed it (captured on arrival). */
   shotRequested: "drive" | "lob" | null;
   /** The `view` time of the input that requested it: the moment the player saw. */
@@ -125,6 +126,14 @@ const MAX_CATCHUP_STEPS = 5;
 const DRAIN_THRESHOLD = 2;
 /** Most step credit a human can bank (also the burst size after a stall). */
 const MAX_STEP_CREDIT = 3;
+/**
+ * Inputs kept when a backlog arrives after a stall; the older surplus is dropped.
+ * The client already predicted those steps and replays only inputs past `ack`,
+ * so it snaps to the server position instead of the server lagging behind.
+ */
+export const INPUT_SURPLUS_KEEP = 3;
+/** Consecutive ticks without a queued input that count as a stall. */
+const STALL_TICKS = MAX_STEP_CREDIT;
 
 const TICKS_PER_SNAPSHOT = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_RATE));
 
@@ -279,6 +288,7 @@ export class Room {
       inputQueue: [],
       ack: undefined,
       stepCredit: 0,
+      starvedTicks: 0,
       shotRequested: null,
       shotView: 0,
       serveRequested: false,
@@ -557,6 +567,10 @@ export class Room {
         // Token bucket: +1 credit per tick (capped), -1 per consumed input, so a
         // client flooding inputs cannot sustain more than one step per tick.
         ps.stepCredit = Math.min(MAX_STEP_CREDIT, ps.stepCredit + 1);
+        // After a stall the backlog is stale: keep only the newest few inputs.
+        if (ps.starvedTicks >= STALL_TICKS && ps.inputQueue.length > INPUT_SURPLUS_KEEP) {
+          ps.inputQueue.splice(0, ps.inputQueue.length - INPUT_SURPLUS_KEEP);
+        }
         let consumed = false;
         for (let k = 0; k < 2 && ps.stepCredit >= 1; k++) {
           if (k === 1 && ps.inputQueue.length <= DRAIN_THRESHOLD) break;
@@ -568,6 +582,7 @@ export class Room {
           ps.ack = next.seq;
           this.applyMove(ps, next.move, locked);
         }
+        ps.starvedTicks = consumed ? 0 : ps.starvedTicks + 1;
         if (!consumed) this.applyMove(ps, { x: 0, z: 0 }, locked);
       }
       const aim = ps.input?.aim;

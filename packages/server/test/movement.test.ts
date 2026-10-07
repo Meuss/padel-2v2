@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLAYER, TICK_DT, type InputMsg, type Vec2 } from "@padel/shared";
-import { Room } from "../src/room.js";
+import { INPUT_SURPLUS_KEEP, Room } from "../src/room.js";
 import { fakeClient } from "./fakes.js";
 
 function input(seq: number, move: Vec2): InputMsg {
@@ -89,6 +89,23 @@ describe("server input queue", () => {
       room.step();
       if (i % 3 === 0) expect(seq - me().ack!).toBeLessThanOrEqual(3);
     }
+    room.stop();
+  });
+
+  it("drops the stale input surplus after a stall, keeping the newest inputs", async () => {
+    const { room } = await seatedRoom();
+    const a1 = (room as unknown as { slots: Map<string, { inputQueue: InputMsg[]; ack: number | undefined }> }).slots.get(
+      "A1",
+    )!;
+    for (let i = 0; i < 10; i++) room.step(); // stall: nothing arrives for 10 ticks
+    for (let seq = 1; seq <= 9; seq++) room.handleInput("p1", input(seq, { x: 0, z: 1 }));
+    room.step();
+    expect(a1.inputQueue.length).toBeLessThanOrEqual(INPUT_SURPLUS_KEEP + 1);
+    // The newest inputs survive: ack is the last one applied, the rest are still queued in order.
+    expect(a1.ack).toBe(9 - a1.inputQueue.length);
+    expect(a1.inputQueue.map((m) => m.seq)).toEqual(
+      Array.from({ length: a1.inputQueue.length }, (_, i) => a1.ack! + 1 + i),
+    );
     room.stop();
   });
 

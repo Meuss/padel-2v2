@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AvatarFactory, pickLocomotion, shirtName, type ModelSource } from "../src/world/avatar.js";
+import { AvatarFactory, pickLocomotion, shirtName, type Locomotion, type ModelSource } from "../src/world/avatar.js";
 import { PALETTE } from "../src/world/palette.js";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -56,16 +56,85 @@ function syntheticModel(): { scene: THREE.Object3D; animations: THREE.AnimationC
 
 describe("pickLocomotion", () => {
   it("stands still below 0.35 m/s, ready when the ball is on our side", () => {
-    expect(pickLocomotion(0, false)).toBe("idle");
-    expect(pickLocomotion(0.34, false)).toBe("idle");
-    expect(pickLocomotion(0.2, true)).toBe("ready");
+    expect(pickLocomotion(0, false, "idle")).toBe("idle");
+    expect(pickLocomotion(0.34, false, "idle")).toBe("idle");
+    expect(pickLocomotion(0.2, true, "idle")).toBe("ready");
+    expect(pickLocomotion(0.2, false, "ready")).toBe("idle");
   });
 
   it("jogs up to 4.2 m/s, then sprints", () => {
-    expect(pickLocomotion(0.35, false)).toBe("jog");
-    expect(pickLocomotion(4.19, true)).toBe("jog");
-    expect(pickLocomotion(4.2, false)).toBe("sprint");
-    expect(pickLocomotion(7, true)).toBe("sprint");
+    expect(pickLocomotion(0.45, false, "idle")).toBe("jog");
+    expect(pickLocomotion(4.19, true, "jog")).toBe("jog");
+    expect(pickLocomotion(4.3, false, "jog")).toBe("sprint");
+    expect(pickLocomotion(7, true, "idle")).toBe("sprint");
+  });
+
+  it("holds the current clip within 0.1 m/s of a threshold", () => {
+    expect(pickLocomotion(0.4, false, "idle")).toBe("idle");
+    expect(pickLocomotion(0.3, false, "jog")).toBe("jog");
+    expect(pickLocomotion(0.24, false, "jog")).toBe("idle");
+    expect(pickLocomotion(0.3, true, "ready")).toBe("ready");
+    expect(pickLocomotion(4.25, false, "jog")).toBe("jog");
+    expect(pickLocomotion(4.15, false, "sprint")).toBe("sprint");
+    expect(pickLocomotion(4.05, false, "sprint")).toBe("jog");
+  });
+
+  it("does not flip on every sample when the speed oscillates 0.30 ↔ 0.40", () => {
+    let loco: Locomotion = "idle";
+    let flips = 0;
+    for (let i = 0; i < 20; i++) {
+      const next = pickLocomotion(i % 2 === 0 ? 0.3 : 0.4, false, loco);
+      if (next !== loco) flips++;
+      loco = next;
+    }
+    expect(flips).toBe(0);
+  });
+});
+
+describe("Avatar speed estimate", () => {
+  it("resets to 0 on a teleport over 2 m instead of reading it as a run", () => {
+    const avatar = new AvatarFactory({ load: () => new Promise(() => {}) }).create("A1", "A");
+    const speed = () => (avatar as unknown as { speed: number }).speed;
+    for (let i = 0; i <= 30; i++) avatar.setPose(0, 0, -5 + i * 0.05, 0, 1 / 60); // 3 m/s
+    expect(speed()).toBeGreaterThan(2);
+    avatar.setPose(0, 0, 5, 0, 1 / 60); // ends swap: ~8.5 m in one frame
+    expect(speed()).toBe(0);
+    avatar.setPose(0, 0, 5, 0, 1 / 60);
+    expect(speed()).toBe(0);
+    avatar.dispose();
+  });
+
+  it("blends an interrupted crossfade from the current weights, without a pop", async () => {
+    const avatar = new AvatarFactory({ load: () => Promise.resolve(syntheticModel()) }).create("A1", "A");
+    await flush();
+    const internals = avatar as unknown as { mixer: THREE.AnimationMixer; clips: Map<string, THREE.AnimationClip> };
+    const action = (name: string) => internals.mixer.existingAction(internals.clips.get(name)!)!;
+    const dt = 1 / 60;
+    let z = -5;
+    avatar.setPose(0, 0, z, 0, dt);
+    avatar.update(dt);
+    const idle = action("Idle_Loop");
+    expect(idle.getEffectiveWeight()).toBe(1);
+    const weights: number[] = [];
+    for (let i = 0; i < 2; i++) {
+      avatar.setPose(0, 0, (z += 0.05), 0, dt); // 3 m/s for two frames: start jogging
+      avatar.update(dt);
+      weights.push(idle.getEffectiveWeight());
+    }
+    expect(action("Jog_Fwd_Loop").getEffectiveWeight()).toBeGreaterThan(0);
+    for (let i = 0; i < 40; i++) {
+      avatar.setPose(0, 0, z, 0, dt); // stop: back to idle before the jog has fully faded in
+      avatar.update(dt);
+      weights.push(idle.getEffectiveWeight());
+    }
+    const step = dt / 0.18 + 1e-4;
+    weights.reduce((prev, w) => {
+      expect(Math.abs(w - prev)).toBeLessThanOrEqual(step);
+      return w;
+    }, 1);
+    expect(weights.at(-1)).toBe(1);
+    expect(action("Jog_Fwd_Loop").isRunning()).toBe(false);
+    avatar.dispose();
   });
 });
 

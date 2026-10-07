@@ -14,11 +14,24 @@ import { PALETTE } from "./palette.js";
 
 export type Locomotion = "idle" | "ready" | "jog" | "sprint";
 
-/** Pick the locomotion clip from ground speed (m/s) and whether the ball is on our side. Pure. */
-export function pickLocomotion(speed: number, ballOnOurSide: boolean): Locomotion {
-  if (speed < 0.35) return ballOnOurSide ? "ready" : "idle";
-  if (speed < 4.2) return "jog";
-  return "sprint";
+/** Ground speeds (m/s) where standing turns into a jog, and a jog into a sprint. */
+const LOCO_THRESHOLDS = [0.35, 4.2] as const;
+/** A threshold must be passed by this much (m/s) to leave the current clip, so noise can't flicker it. */
+const LOCO_HYSTERESIS = 0.1;
+const LOCO_RANK: Record<Locomotion, number> = { idle: 0, ready: 0, jog: 1, sprint: 2 };
+
+/**
+ * Pick the locomotion clip from ground speed (m/s), whether the ball is on our side,
+ * and the clip playing now (hysteresis: ±0.1 m/s around each threshold). Pure.
+ */
+export function pickLocomotion(speed: number, ballOnOurSide: boolean, prev: Locomotion): Locomotion {
+  const prevRank = LOCO_RANK[prev];
+  let rank = 0;
+  LOCO_THRESHOLDS.forEach((t, i) => {
+    if (speed >= (prevRank > i ? t - LOCO_HYSTERESIS : t + LOCO_HYSTERESIS)) rank = i + 1;
+  });
+  if (rank === 0) return ballOnOurSide ? "ready" : "idle";
+  return rank === 1 ? "jog" : "sprint";
 }
 
 /** Nickname as printed on the shirt: uppercase, at most 10 characters including the ellipsis. Pure. */
@@ -58,6 +71,8 @@ const SWING_CLIP = { drive: "Sword_Attack", smash: "Punch_Cross" } as const;
 const DANCE_CLIP = "Dance_Loop";
 
 const CROSSFADE_S = 0.18;
+/** A jump further than this (m) between two poses is a teleport (ends swap, reconnect), not a run. */
+const TELEPORT_M = 2;
 const SWING_S = 0.42;
 const SWING_FADE_IN_S = 0.05;
 const SWING_FADE_OUT_S = 0.12;
@@ -399,7 +414,13 @@ export class Avatar {
   private speed = 0;
   private ballOnOurSide = false;
   private loco: Locomotion = "idle";
-  private locoAction: THREE.AnimationAction | null = null;
+  /**
+   * The full-body base layer (locomotion clips and the dance): exactly one target fades
+   * up while every other running action fades down, each from its current weight. Three's
+   * fadeIn/fadeOut restart from 0/1, which pops when a crossfade is interrupted.
+   */
+  private baseTarget: THREE.AnimationAction | null = null;
+  private baseActions = new Set<THREE.AnimationAction>();
   private swingAction: THREE.AnimationAction | null = null;
   private swingElapsed = 0;
   private danceAction: THREE.AnimationAction | null = null;
@@ -417,9 +438,12 @@ export class Avatar {
   }
 
   setPose(x: number, y: number, z: number, yaw: number, dtSec: number): void {
-    if (this.last && dtSec > 0) {
-      // Smoothed, and clamped so a teleport (ends swap, reconnect) is not a sprint.
-      const inst = Math.min(10, Math.hypot(x - this.last.x, z - this.last.z) / dtSec);
+    const moved = this.last ? Math.hypot(x - this.last.x, z - this.last.z) : 0;
+    if (moved > TELEPORT_M) {
+      this.speed = 0; // a teleport (ends swap, reconnect) is not a jog
+    } else if (this.last && dtSec > 0) {
+      // Smoothed, and clamped so a large frame gap is not a sprint.
+      const inst = Math.min(10, moved / dtSec);
       this.speed += (inst - this.speed) * Math.min(1, dtSec * 12);
     }
     this.last = { x, z };
@@ -463,11 +487,8 @@ export class Avatar {
     }
     const dance = this.action(DANCE_CLIP);
     if (!dance) return;
-    if (this.danceAction !== dance) {
-      dance.reset().fadeIn(CROSSFADE_S).play();
-      this.locoAction?.fadeOut(CROSSFADE_S);
-      this.danceAction = dance;
-    }
+    this.danceAction = dance;
+    this.setBase(dance);
   }
 
   setName(name: string): void {
@@ -484,18 +505,15 @@ export class Avatar {
     }
     if (!this.mixer) return;
 
-    if (wasCelebrating && this.celebrateLeft === 0 && this.danceAction) {
-      this.danceAction.fadeOut(CROSSFADE_S);
-      this.danceAction = null;
-      this.locoAction?.reset().fadeIn(CROSSFADE_S).play();
-    }
+    if (wasCelebrating && this.celebrateLeft === 0) this.danceAction = null;
     if (!this.danceAction) {
-      const next = pickLocomotion(this.speed, this.ballOnOurSide);
-      if (next !== this.loco || !this.locoAction) this.playLocomotion(next);
+      // Pick the clip first, then fade it in: the dance hands over straight to it.
+      this.loco = pickLocomotion(this.speed, this.ballOnOurSide, this.loco);
+      const loco = this.action(LOCO_CLIP[this.loco]);
+      this.setBase(loco);
+      if (loco && this.loco === "jog") loco.timeScale = THREE.MathUtils.clamp(this.speed / 3.2, 0.8, 1.4);
     }
-    if (this.locoAction && this.loco === "jog") {
-      this.locoAction.timeScale = THREE.MathUtils.clamp(this.speed / 3.2, 0.8, 1.4);
-    }
+    this.blendBase(dtSec);
 
     if (this.swingAction) {
       const before = this.swingElapsed;
@@ -522,6 +540,8 @@ export class Avatar {
       this.mixer.uncacheRoot(this.body);
     }
     this.mixer = null;
+    this.baseActions.clear();
+    this.baseTarget = null;
     for (const m of this.kitMaterials) m.dispose();
     for (const s of this.skeletons) s.dispose();
     if (this.decal) {
@@ -578,7 +598,8 @@ export class Avatar {
     this.clips = model.clips;
     this.mixer = new THREE.AnimationMixer(body);
     this.root.add(body);
-    this.playLocomotion(pickLocomotion(this.speed, this.ballOnOurSide));
+    this.loco = pickLocomotion(this.speed, this.ballOnOurSide, this.loco);
+    this.setBase(this.action(LOCO_CLIP[this.loco]));
     if (this.celebrateLeft > 0) this.startDance(); // finish a celebration begun on the fallback
   }
 
@@ -587,19 +608,36 @@ export class Avatar {
     return clip && this.mixer ? this.mixer.clipAction(clip) : null;
   }
 
-  private playLocomotion(next: Locomotion): void {
-    const action = this.action(LOCO_CLIP[next]);
-    this.loco = next;
-    if (!action || action === this.locoAction) return;
-    const prev = this.locoAction;
-    action.reset();
-    action.timeScale = 1;
-    if (prev) {
-      action.fadeIn(CROSSFADE_S);
-      prev.fadeOut(CROSSFADE_S);
+  /** Make `action` the base-layer target. One not already running starts from its first frame. */
+  private setBase(action: THREE.AnimationAction | null): void {
+    if (!action || action === this.baseTarget) return;
+    if (!this.baseActions.has(action)) {
+      action.reset();
+      action.timeScale = 1;
+      // The first clip shows at once; later ones blend up from nothing.
+      action.setEffectiveWeight(this.baseTarget ? 0 : 1);
+      action.play();
+      this.baseActions.add(action);
     }
-    action.play();
-    this.locoAction = action;
+    this.baseTarget = action;
+  }
+
+  /** Fade the base layer toward its target at a constant rate; the weights always sum to 1. */
+  private blendBase(dtSec: number): void {
+    const step = dtSec / CROSSFADE_S;
+    let others = 0;
+    for (const action of this.baseActions) {
+      if (action === this.baseTarget) continue;
+      const w = Math.max(0, action.weight - step);
+      if (w === 0) {
+        action.stop();
+        this.baseActions.delete(action);
+      } else {
+        action.setEffectiveWeight(w);
+        others += w;
+      }
+    }
+    this.baseTarget?.setEffectiveWeight(Math.min(1, Math.max(0, 1 - others)));
   }
 }
 
