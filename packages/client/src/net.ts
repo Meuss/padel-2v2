@@ -28,6 +28,7 @@ export interface NetHandlers {
   onMatch?: (msg: MatchMsg) => void;
   onVote?: (msg: VoteMsg) => void;
   onKicked?: (reason: string) => void;
+  onOutdated?: () => void;
   onReaction?: (msg: ReactionMsg) => void;
 }
 
@@ -109,6 +110,11 @@ export class Net {
         break;
       case "vote":
         this.handlers.onVote?.(msg);
+        break;
+      case "outdated":
+        // Reconnecting would only be rejected again: stop, like a kick.
+        this.kicked = true;
+        this.handlers.onOutdated?.();
         break;
       case "kicked":
         this.kicked = true;

@@ -15,6 +15,7 @@ import {
   decodeClient,
   encode,
   sanitizeName,
+  type OutdatedMsg,
   type WelcomeMsg,
 } from "@padel/shared";
 import { Room } from "./room.js";
@@ -56,6 +57,13 @@ wss.on("connection", (ws) => {
     // player still idles out. Only deliberate signals refresh the idle timer.
     if (msg.t === "join") {
       if (joined) return;
+      if (msg.version !== PROTOCOL_VERSION) {
+        const out: OutdatedMsg = { t: "outdated", serverVersion: PROTOCOL_VERSION };
+        ws.send(encode(out));
+        ws.close();
+        console.log(`[ws] ${id} rejected: client protocol v${msg.version}, server v${PROTOCOL_VERSION}`);
+        return;
+      }
       joined = true;
       room.markActivity(id);
       client.name = sanitizeName(msg.name, `Player ${id}`);

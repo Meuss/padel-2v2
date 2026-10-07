@@ -33,8 +33,9 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
   testable without Rapier or the DOM.
 - Changing a message: edit the types in `shared/src/messages.ts`, then handle it
   on both sides (server dispatch is in `server/src/index.ts`, client dispatch in
-  `client/src/net.ts`). `PROTOCOL_VERSION` is sent on join but the server does
-  not check it yet.
+  `client/src/net.ts`). `PROTOCOL_VERSION` is sent on join; the server answers a
+  mismatch with `outdated` and closes, and the client shows a reload screen. Bump
+  it whenever the wire format changes.
 - Movement input is in the **player's frame** (x = strafe, z = toward the net); the
   room maps it to world axes from the half the player currently defends, so it
   stays correct after ends-swaps. Use the `side` sign rather than the team.

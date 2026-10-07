@@ -177,6 +177,12 @@ export interface MatchMsg {
   winner: Team | null;
 }
 
+/** Sent instead of a Welcome when the client speaks another protocol version; the server then closes. */
+export interface OutdatedMsg {
+  t: "outdated";
+  serverVersion: number;
+}
+
 /** Sent right before the server closes an idle connection. */
 export interface KickedMsg {
   t: "kicked";
@@ -204,6 +210,7 @@ export type ServerMessage =
   | RosterMsg
   | SnapshotMsg
   | MatchMsg
+  | OutdatedMsg
   | KickedMsg
   | VoteMsg
   | ReactionMsg;

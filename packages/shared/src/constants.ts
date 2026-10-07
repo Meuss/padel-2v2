@@ -10,7 +10,7 @@
  *   The net sits on the plane z = 0. Team A defends z < 0, Team B defends z > 0.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Real padel court is 20m × 10m. */
 export const COURT = {

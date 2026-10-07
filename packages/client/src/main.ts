@@ -51,6 +51,7 @@ let selfSlot: Slot | null = null;
 let selfTeam: Team | null = null;
 let ownPos: { x: number; z: number } | null = null;
 let inputSeq = 0;
+let outdated = false;
 
 let match: MatchMsg | null = null;
 let lastFlashed: string | null = null;
@@ -265,6 +266,14 @@ const net = new Net({
   onKicked: (reason) => {
     showNickname(reason);
   },
+  onOutdated: () => {
+    outdated = true;
+    hideLoading();
+    nickInput.style.display = "none";
+    nickGo.textContent = "Reload";
+    nickMsg.textContent = "A new version of Meuss Padel Club is out.";
+    nickname.style.display = "flex";
+  },
   onReaction: (msg) => showReaction(msg.slot, msg.id),
   onSnapshot: (msg) => {
     interp.add(msg);
@@ -286,6 +295,10 @@ function showNickname(message = ""): void {
 }
 
 function play(): void {
+  if (outdated) {
+    location.reload();
+    return;
+  }
   const name = sanitizeName(nickInput.value, "Player");
   nickname.style.display = "none";
   net.connect(name);
