@@ -219,7 +219,7 @@ function renderServePrompt(): void {
     const who = document.createElement("span");
     who.className = "who";
     who.textContent = names.get(m.serverSlot)?.name ?? m.serverSlot;
-    servePrompt.replaceChildren(who, " to serve");
+    servePrompt.replaceChildren(who, "to serve");
   }
   servePrompt.classList.add("show");
 }

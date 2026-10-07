@@ -36,7 +36,7 @@ describe("bugModel", () => {
   });
 
   it("treats no match yet like the warm-up", () => {
-    expect(bugModel(null, null)).toEqual({ header: "MEUSS PADEL CLUB", tiebreak: false, rows: null, call: null });
+    expect(bugModel(null, null)).toEqual({ header: "MEUSS PADEL CLUB", tiebreak: false, rows: null, call: null, rally: false });
   });
 
   it("lays out AZUL then ROJO with games and point labels", () => {
@@ -96,9 +96,28 @@ describe("bugModel", () => {
     expect(bugModel(msg({ eventKind: "reset" }), prev).call).toBeNull();
   });
 
-  it("calls tiebreak points as numbers", () => {
-    const prev = msg({ tiebreak: true, gamesA: 6, gamesB: 6, serverSlot: "A2", pointA: "2", pointB: "3" });
-    const next = msg({ ...prev, pointA: "3", eventKind: "point", eventTeam: "A", phase: "between" });
-    expect(bugModel(next, prev).call).toBe("3 – 3");
+  it("calls tiebreak points as numbers, server's first", () => {
+    const prev = msg({ tiebreak: true, gamesA: 6, gamesB: 6, serverSlot: "A2", pointA: "3", pointB: "2" });
+    const next = msg({ ...prev, pointA: "4", eventKind: "point", eventTeam: "A", phase: "between" });
+    expect(bugModel(next, prev).call).toBe("4 – 2");
+    expect(bugModel({ ...next, serverSlot: "B1" }, { ...prev, serverSlot: "B1" }).call).toBe("2 – 4");
+  });
+
+  it("calls 40-40 the golden point", () => {
+    const prev = msg({ phase: "rally", pointA: "40", pointB: "30" });
+    const next = msg({ phase: "between", pointA: "40", pointB: "40", eventKind: "point", eventTeam: "B" });
+    expect(bugModel(next, prev).call).toBe("PUNTO DE ORO");
+  });
+
+  it("calls an equal score below 40 IGUALES", () => {
+    const prev = msg({ phase: "rally", serverSlot: "B1", pointA: "0", pointB: "15" });
+    const next = msg({ phase: "between", serverSlot: "B1", pointA: "15", pointB: "15", eventKind: "point", eventTeam: "A" });
+    expect(bugModel(next, prev).call).toBe("QUINCE IGUALES");
+  });
+
+  it("flags the rally so the call strip hides", () => {
+    expect(bugModel(msg({ phase: "rally" }), null).rally).toBe(true);
+    expect(bugModel(msg({ phase: "between" }), null).rally).toBe(false);
+    expect(bugModel(msg({ phase: "serve" }), null).rally).toBe(false);
   });
 });

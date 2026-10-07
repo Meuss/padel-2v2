@@ -1,6 +1,7 @@
 /**
- * The pro-tour score bug, bottom-left: a white header strip over two navy team rows (colour bar,
- * serve dot, name, games, points), and the Spanish score call in a strip under it after each point.
+ * The pro-tour score bug, bottom-left: a navy header strip over two navy team rows (colour bar,
+ * team dot, name, optic ball on the serving team, games, points), and the Spanish score call in a
+ * strip under it after each point.
  * bugModel is pure (unit tested); ScoreBug only draws a model.
  */
 import type { MatchMsg, Team } from "@padel/shared";
@@ -19,6 +20,8 @@ export interface BugModel {
   tiebreak: boolean;
   rows: [BugRow, BugRow] | null;
   call: string | null;
+  /** A rally is in play: the score call strip hides so the rally screen stays clean. */
+  rally: boolean;
 }
 
 const CLUB = "MEUSS PADEL CLUB";
@@ -39,7 +42,7 @@ function pointJustWon(m: MatchMsg, prev: MatchMsg | null): boolean {
 
 /** The score bug for a match state; `prev` is the state before it, to spot the point just won. */
 export function bugModel(m: MatchMsg | null, prev: MatchMsg | null): BugModel {
-  if (!m || m.phase === "warmup") return { header: CLUB, tiebreak: false, rows: null, call: null };
+  if (!m || m.phase === "warmup") return { header: CLUB, tiebreak: false, rows: null, call: null, rally: false };
   const over = m.phase === "over";
   const server = over ? null : teamOf(m.serverSlot);
   const row = (team: Team): BugRow => ({
@@ -60,6 +63,7 @@ export function bugModel(m: MatchMsg | null, prev: MatchMsg | null): BugModel {
     tiebreak: m.tiebreak && !over,
     rows: [row("A"), row("B")],
     call,
+    rally: m.phase === "rally",
   };
 }
 
@@ -97,7 +101,9 @@ export class ScoreBug {
       const r = el("div", `sb-row ${team === "A" ? "azul" : "rojo"}`);
       const games = el("span", "sb-games");
       const points = el("span", "sb-points");
-      r.append(el("span", "sb-bar"), el("span", "sb-dot"), el("span", "sb-name", teamLabel(team)), games, points);
+      const name = el("span", "sb-name");
+      name.append(el("span", "sb-label", teamLabel(team)), serveBall());
+      r.append(el("span", "sb-bar"), el("span", "sb-dot"), name, games, points);
       this.rowsEl.append(r);
       return { root: r, games, points };
     };
@@ -122,7 +128,7 @@ export class ScoreBug {
       setCell(els.points, r.points);
     }
     if (model.call !== null) this.showCall(model.call);
-    else if (model.rows === null) this.hideCall();
+    else if (model.rows === null || model.rally) this.hideCall();
   }
 
   private showCall(text: string): void {
@@ -138,6 +144,24 @@ export class ScoreBug {
     window.clearTimeout(this.callTimer);
     this.callEl.classList.remove("show");
   }
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+
+/** The serving team's mark: a small optic ball with its seam. */
+function serveBall(): SVGSVGElement {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", "sb-serve");
+  svg.setAttribute("viewBox", "0 0 10 10");
+  svg.setAttribute("aria-hidden", "true");
+  const ball = document.createElementNS(SVG, "circle");
+  ball.setAttribute("cx", "5");
+  ball.setAttribute("cy", "5");
+  ball.setAttribute("r", "4.6");
+  const seam = document.createElementNS(SVG, "path");
+  seam.setAttribute("d", "M2.1 1.9C4.3 3.9 4.3 6.1 2.1 8.1M7.9 1.9C5.7 3.9 5.7 6.1 7.9 8.1");
+  svg.append(ball, seam);
+  return svg;
 }
 
 /** Write a cell, flashing it when an existing value changes (not on the first fill). */

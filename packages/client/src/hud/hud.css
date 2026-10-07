@@ -196,38 +196,43 @@
 /* ── Score bug, bottom-left (measured from docs/design/v2-comp-clean-feed.png) ── */
 
 #scorebug {
-  --sb-head-h: 3.1vh;
+  /* Comp proportions: the header is nearly a row tall (about 31% of the bug). */
+  --sb-head-h: 3.8vh;
   --sb-row-h: 4.2vh;
   --sb-cell-w: 15%;
-  --sb-rule: rgba(244, 247, 255, 0.16);
+  --sb-rule-w: max(1px, 0.07vw);
+  --sb-rule: rgba(244, 247, 255, 0.24);
   position: fixed;
   left: 4.9vw;
   bottom: 4.6vh;
   width: 18.2vw;
   min-width: 260px;
-  border: 1px solid rgba(244, 247, 255, 0.34);
+  background: var(--bug-navy);
+  border: var(--sb-rule-w) solid rgba(244, 247, 255, 0.38);
   pointer-events: none;
   user-select: none;
 }
 
+/* "MEUSS PADEL CLUB" spans about 54% of the bug's width, so its size follows the width. */
 .sb-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--sb-head-h);
-  min-height: 20px;
-  padding: 0 0.7em;
-  background: var(--bug-white);
-  color: var(--bug-ink);
-  font-size: clamp(12px, 1.9vh, 28px);
+  min-height: 24px;
+  padding: 0 0.75em;
+  background: linear-gradient(180deg, #14234a 0%, var(--bug-navy) 100%);
+  border-bottom: var(--sb-rule-w) solid var(--sb-rule);
+  color: var(--bug-white);
+  font-size: clamp(15px, 1.4vw, 36px);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 .sb-tb {
-  padding: 0.15em 0.4em;
-  background: var(--bug-navy);
-  color: var(--bug-white);
-  font-size: 0.8em;
+  padding: 0.12em 0.4em;
+  background: var(--bug-white);
+  color: var(--bug-ink);
+  font-size: 0.72em;
   letter-spacing: 0.08em;
 }
 
@@ -240,40 +245,61 @@
   font-size: clamp(16px, 2.6vh, 40px);
   font-weight: 700;
 }
+/* One rule between the rows, across the whole row including the points cell. */
 .sb-row + .sb-row {
-  border-top: 1px solid var(--sb-rule);
+  border-top: var(--sb-rule-w) solid var(--sb-rule);
 }
 .sb-bar {
   flex: none;
   width: 0.35vw;
   min-width: 4px;
 }
-.sb-row.azul .sb-bar {
+.sb-row.azul .sb-bar,
+.sb-row.azul .sb-dot {
   background: var(--azul);
 }
-.sb-row.rojo .sb-bar {
+.sb-row.rojo .sb-bar,
+.sb-row.rojo .sb-dot {
   background: var(--rojo);
 }
-/* The serve dot slot is always there, so names never shift when the serve changes ends. */
+/* Team dot before the name, as in the comp. */
 .sb-dot {
   flex: none;
   align-self: center;
-  width: 0.7vh;
-  min-width: 5px;
+  width: 0.55em;
   aspect-ratio: 1;
-  margin: 0 0.55em 0 0.6em;
+  margin: 0 0.4em 0 0.5em;
   border-radius: 50%;
-}
-.sb-row.serving .sb-dot {
-  background: var(--optic);
 }
 .sb-name {
   flex: 1;
-  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
   min-width: 0;
   color: var(--bug-white);
   letter-spacing: 0.03em;
+}
+.sb-label {
   padding-top: 0.06em;
+}
+/* The serving team's optic ball, after its name. */
+.sb-serve {
+  flex: none;
+  width: 0.42em;
+  height: 0.42em;
+  visibility: hidden;
+}
+.sb-serve circle {
+  fill: var(--optic);
+}
+.sb-serve path {
+  fill: none;
+  stroke: rgba(15, 26, 51, 0.55);
+  stroke-width: 0.8;
+}
+.sb-row.serving .sb-serve {
+  visibility: visible;
 }
 .sb-games,
 .sb-points {
@@ -286,22 +312,18 @@
 }
 .sb-games {
   --sb-cell-bg: var(--bug-navy-2);
-  --sb-cell-flash: #2a3d70;
+  --sb-cell-flash: #2f4785;
   background: var(--sb-cell-bg);
-  border-left: 1px solid var(--sb-rule);
+  border-left: var(--sb-rule-w) solid var(--sb-rule);
   color: var(--bug-white);
 }
 .sb-points {
   --sb-cell-bg: var(--bug-white);
-  --sb-cell-flash: #ffffff;
+  --sb-cell-flash: #cfe0ff;
   background: var(--sb-cell-bg);
   color: var(--bug-ink);
 }
-.sb-row + .sb-row .sb-points {
-  border-top: 1px solid rgba(11, 16, 32, 0.12);
-  margin-top: -1px;
-}
-/* A changed value: the cell lifts slightly brighter, then settles. No scale. */
+/* A changed value: the cell takes a brighter (games) or blue-tinted (points) wash, then settles. No scale. */
 .sb-games.flash,
 .sb-points.flash {
   animation: sb-flash 300ms var(--ease-out);
@@ -309,7 +331,6 @@
 @keyframes sb-flash {
   from {
     background: var(--sb-cell-flash);
-    box-shadow: inset 0 0 0 999px rgba(244, 247, 255, 0.14);
   }
 }
 
@@ -339,7 +360,7 @@
   right: -1px;
   display: flex;
   align-items: center;
-  height: var(--sb-head-h);
+  height: 3.1vh;
   min-height: 20px;
   padding: 0 0.8em;
   background: rgba(15, 26, 51, 0.92);
@@ -380,9 +401,11 @@
 #serveprompt.show {
   display: block;
 }
+/* The name carries the only gap before "to serve" (no space text node). */
 #serveprompt .who {
   display: inline-block;
   vertical-align: bottom;
+  margin-right: 0.2em;
   max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
