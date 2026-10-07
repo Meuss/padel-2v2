@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLAYER, TICK_DT, type InputMsg, type Vec2 } from "@padel/shared";
-import { INPUT_SURPLUS_KEEP, Room } from "../src/room.js";
+import { INPUT_SURPLUS_KEEP, Room, STALL_TICKS } from "../src/room.js";
 import { fakeClient } from "./fakes.js";
 
 function input(seq: number, move: Vec2): InputMsg {
@@ -97,7 +97,7 @@ describe("server input queue", () => {
     const a1 = (room as unknown as { slots: Map<string, { inputQueue: InputMsg[]; ack: number | undefined }> }).slots.get(
       "A1",
     )!;
-    for (let i = 0; i < 10; i++) room.step(); // stall: nothing arrives for 10 ticks
+    for (let i = 0; i < STALL_TICKS; i++) room.step(); // stall: nothing arrives for STALL_TICKS ticks
     for (let seq = 1; seq <= 9; seq++) room.handleInput("p1", input(seq, { x: 0, z: 1 }));
     room.step();
     expect(a1.inputQueue.length).toBeLessThanOrEqual(INPUT_SURPLUS_KEEP + 1);
@@ -107,6 +107,38 @@ describe("server input queue", () => {
     expect(a1.inputQueue.map((m) => m.seq)).toEqual(
       Array.from({ length: a1.inputQueue.length }, (_, i) => a1.ack! + 1 + i),
     );
+    room.stop();
+  });
+
+  it("absorbs a gap shorter than a stall by draining, without dropping any input", async () => {
+    const { room, me } = await seatedRoom();
+    const a1 = (room as unknown as { slots: Map<string, { inputQueue: InputMsg[] }> }).slots.get("A1")!;
+    for (let i = 0; i < STALL_TICKS - 1; i++) room.step(); // jitter: a gap just short of a stall
+    const n = STALL_TICKS - 1;
+    for (let seq = 1; seq <= n; seq++) room.handleInput("p1", input(seq, { x: 0, z: 1 }));
+    for (let i = 0; i < n; i++) room.step();
+    expect(a1.inputQueue).toEqual([]);
+    expect(me().ack).toBe(n);
+    expect(me().pos.z).toBeCloseTo(-5 + n * PLAYER.speed * TICK_DT, 6); // every input applied once
+    room.stop();
+  });
+
+  it("drops inputs whose seq is not a non-negative safe integer", async () => {
+    const { room, p, me } = await seatedRoom();
+    const bad: unknown[] = [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, "7", { evil: true }, null];
+    for (const seq of bad) room.handleInput("p1", { ...input(1, { x: 0, z: 1 }), seq: seq as number });
+    room.step();
+    room.step();
+    room.step();
+    expect(me().ack).toBeUndefined();
+    expect(me().pos).toEqual({ x: -2.5, y: 0, z: -5 });
+    expect(p.messages().some((m) => m.t === "snapshot" && m.players.some((s) => s.ack !== undefined))).toBe(false);
+
+    room.handleInput("p1", input(0, { x: 0, z: 1 }));
+    room.step();
+    room.step();
+    room.step();
+    expect(me().ack).toBe(0);
     room.stop();
   });
 

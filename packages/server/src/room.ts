@@ -61,9 +61,18 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Num
 const isFiniteVec2 = (v: unknown): v is Vec2 =>
   typeof v === "object" && v !== null && isFiniteNumber((v as Vec2).x) && isFiniteNumber((v as Vec2).z);
 
-/** Whether every number the room reads from an input is finite (a hostile client can send NaN). */
+/**
+ * Whether every number the room reads from an input is usable: finite vectors and view (a hostile
+ * client can send NaN), and a non-negative safe-integer seq (it is echoed to everyone as `ack`).
+ */
 function isValidInput(input: InputMsg): boolean {
-  return isFiniteVec2(input.move) && isFiniteVec2(input.aim) && isFiniteNumber(input.view);
+  return (
+    Number.isSafeInteger(input.seq) &&
+    input.seq >= 0 &&
+    isFiniteVec2(input.move) &&
+    isFiniteVec2(input.aim) &&
+    isFiniteNumber(input.view)
+  );
 }
 
 /** What a snapshot reports for a contact: the walls are glass up to COURT.glassHeight, mesh above. */
@@ -132,8 +141,11 @@ const MAX_STEP_CREDIT = 3;
  * so it snaps to the server position instead of the server lagging behind.
  */
 export const INPUT_SURPLUS_KEEP = 3;
-/** Consecutive ticks without a queued input that count as a stall. */
-const STALL_TICKS = MAX_STEP_CREDIT;
+/**
+ * Consecutive ticks without a queued input that count as a stall (100 ms): shorter gaps, such as
+ * ordinary Wi-Fi jitter, are absorbed by draining two inputs per tick instead of dropping any.
+ */
+export const STALL_TICKS = 6;
 
 const TICKS_PER_SNAPSHOT = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_RATE));
 
