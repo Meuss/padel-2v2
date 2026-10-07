@@ -32,7 +32,7 @@ export interface JoinMsg {
  */
 export interface InputMsg {
   t: "input";
-  seq: number; // monotonic per client
+  seq: number; // monotonic per client; one input per 60 Hz tick, echoed back as PlayerState.ack
   ts: number; // client clock (ms) for diagnostics
   move: Vec2; // x = strafe, z = forward (player frame), components in [-1, 1]
   aim: Vec2; // normalized aim direction on the ground plane (world space)

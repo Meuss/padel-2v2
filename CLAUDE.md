@@ -39,6 +39,10 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
 - Movement input is in the **player's frame** (x = strafe, z = toward the net); the
   room maps it to world axes from the half the player currently defends, so it
   stays correct after ends-swaps. Use the `side` sign rather than the team.
+- `stepPlayer()` in `shared/src/gameplay.ts` is the only movement integrator. The
+  server applies one queued input per tick and echoes its `seq` as `ack`; the
+  client predicts with the same function and replays unacked inputs
+  (`client/src/predict.ts`). Change movement there, never on one side only.
 - Players are not physics bodies. Hits are resolved by proximity
   (`swingConnects`); only the ball is simulated.
 - Reaction images live in `packages/client/public/reactions/<id>.png` and must

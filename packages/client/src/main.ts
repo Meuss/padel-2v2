@@ -7,6 +7,7 @@ import {
   PLAYER,
   REACTIONS,
   sanitizeName,
+  type InputMsg,
   type MatchMsg,
   type Role,
   type Slot,
@@ -17,6 +18,7 @@ import { InterpBuffer } from "./interp.js";
 import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
+import { Predictor, fixedSteps } from "./predict.js";
 
 const app = document.getElementById("app")!;
 const hud = document.getElementById("hud")!;
@@ -51,9 +53,25 @@ let selfSlot: Slot | null = null;
 let selfTeam: Team | null = null;
 let ownPos: { x: number; z: number } | null = null;
 let inputSeq = 0;
+const predictor = new Predictor();
+let stepAccum = 0;
+let carrySwing = false;
+let carryServe = false;
+let selfYaw = 0;
 let outdated = false;
 
 let match: MatchMsg | null = null;
+
+/** z-sign of the half our team defends right now (changes on ends-swaps). */
+function selfSide(): -1 | 1 {
+  const sideA = match?.sideA ?? -1;
+  return selfTeam === "B" ? (sideA === -1 ? 1 : -1) : sideA;
+}
+
+/** True while we are the server waiting to serve: the server pins us in place. */
+function selfLocked(): boolean {
+  return match !== null && match.phase === "serve" && match.serverSlot === selfSlot;
+}
 let lastFlashed: string | null = null;
 let lastHighlightKey: string | null = null;
 let flashTimer: number | undefined;
@@ -223,6 +241,8 @@ const net = new Net({
     renderHud();
   },
   onWelcome: (msg) => {
+    predictor.reset();
+    stepAccum = 0;
     hideLoading();
     role = msg.role;
     state.role = msg.role;
@@ -277,6 +297,10 @@ const net = new Net({
   onReaction: (msg) => showReaction(msg.slot, msg.id),
   onSnapshot: (msg) => {
     interp.add(msg);
+    if (selfSlot) {
+      const me = msg.players.find((p) => p.slot === selfSlot);
+      if (me) predictor.reconcile({ x: me.pos.x, z: me.pos.z }, me.ack, selfSide(), selfLocked());
+    }
     for (const p of msg.players) {
       if (p.swing && p.slot !== selfSlot) scene.triggerSwing(p.slot);
     }
@@ -408,15 +432,19 @@ scene.start((dt) => {
   if (s) {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
     const present = new Set<string>();
+    const predicted = predictor.renderPosition(dt);
     for (const p of s.players) {
       present.add(p.slot);
       seenSlots.add(p.slot);
-      framePos.set(p.slot, { x: p.pos.x, z: p.pos.z });
-      scene.setPlayer(p.slot, p.pos.x, p.pos.y, p.pos.z, p.yaw);
-      updateLabel(p.slot, p.pos.x, p.pos.z);
+      const mine = p.slot === selfSlot && predicted !== null;
+      const x = mine ? predicted.x : p.pos.x;
+      const z = mine ? predicted.z : p.pos.z;
+      framePos.set(p.slot, { x, z });
+      scene.setPlayer(p.slot, x, p.pos.y, z, mine ? selfYaw : p.yaw);
+      updateLabel(p.slot, x, z);
       if (p.slot === selfSlot) {
-        ownPos = { x: p.pos.x, z: p.pos.z };
-        scene.focusCamera(p.pos.x, p.pos.y, p.pos.z);
+        ownPos = { x, z };
+        scene.focusCamera(x, p.pos.y, z);
       }
     }
     for (const slot of seenSlots) {
@@ -431,19 +459,31 @@ scene.start((dt) => {
 
   if (input) {
     const i = input.poll();
+    // A click between ticks must still reach the next tick.
+    carrySwing ||= i.swing;
+    carryServe ||= i.serve;
     const aim =
       ownPos !== null
         ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
         : { x: 0, z: selfTeam === "A" ? 1 : -1 };
-    net.send({
-      t: "input",
-      seq: inputSeq++,
-      ts: performance.now(),
-      move: i.move,
-      aim,
-      swing: i.swing,
-      serve: i.serve,
-    });
+    if (aim.x !== 0 || aim.z !== 0) selfYaw = Math.atan2(aim.x, aim.z);
+    const { steps, accumulator } = fixedSteps(stepAccum, dt);
+    stepAccum = accumulator;
+    for (let k = 0; k < steps; k++) {
+      const msg: InputMsg = {
+        t: "input",
+        seq: inputSeq++,
+        ts: performance.now(),
+        move: i.move,
+        aim,
+        swing: carrySwing,
+        serve: carryServe,
+      };
+      carrySwing = false;
+      carryServe = false;
+      net.send(msg);
+      predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
+    }
     if (i.swing && selfSlot) scene.triggerSwing(selfSlot);
   }
 });
