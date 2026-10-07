@@ -54,6 +54,9 @@ export class CameraRig {
   private ball: { x: number; z: number } | null = null;
   private side: -1 | 1 = -1;
   private look = new THREE.Vector3(0, 0.5, 2);
+  /** Shake amplitude (m) requested for the next frame, and the offset applied this frame. */
+  private shake = 0;
+  private shakeOffset = new THREE.Vector3();
 
   constructor(private camera: THREE.PerspectiveCamera) {}
 
@@ -81,7 +84,15 @@ export class CameraRig {
     return this.camera.position.z;
   }
 
+  /** Shake the camera by up to `amplitude` metres on the next update (an additive offset, one frame). */
+  addShake(amplitude: number): void {
+    this.shake += amplitude;
+  }
+
   update(dtSec: number): void {
+    // Undo last frame's shake so it never feeds the smoothing.
+    this.camera.position.sub(this.shakeOffset);
+    this.shakeOffset.set(0, 0, 0);
     const t = this.target();
     const kp = 1 - Math.exp(-dtSec * 6);
     const kf = 1 - Math.exp(-dtSec * 4);
@@ -92,6 +103,12 @@ export class CameraRig {
     if (Math.abs(fov - this.camera.fov) > 1e-4) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
+    }
+    if (this.shake > 0) {
+      const a = this.shake;
+      this.shakeOffset.set((Math.random() * 2 - 1) * a, (Math.random() * 2 - 1) * a, (Math.random() * 2 - 1) * a);
+      this.camera.position.add(this.shakeOffset);
+      this.shake = 0;
     }
   }
 }

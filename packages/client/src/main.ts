@@ -10,15 +10,18 @@ import {
   SERVICE_LINE_DIST,
   sanitizeName,
   tossApex,
+  type ContactEvent,
   type InputMsg,
   type MatchMsg,
   type Role,
+  type ShotEvent,
   type Slot,
   type Team,
   type Vec2,
 } from "@padel/shared";
 import { Input } from "./input.js";
 import { InterpBuffer } from "./interp.js";
+import { EVENT_STALE_MS, EventQueue } from "./events.js";
 import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
@@ -50,6 +53,8 @@ const BASE = import.meta.env.BASE_URL;
 const scene = new PadelScene(app);
 if (import.meta.env.DEV) (window as unknown as { __padelScene: PadelScene }).__padelScene = scene;
 const interp = new InterpBuffer();
+/** Snapshot events, held until the rendered ball reaches them. */
+const events = new EventQueue();
 const seenSlots = new Set<string>();
 
 let input: Input | null = null;
@@ -293,6 +298,7 @@ const net = new Net({
   onWelcome: (msg) => {
     predictor.reset();
     interp.reset();
+    events.clear();
     stepAccum = 0;
     hideLoading();
     role = msg.role;
@@ -363,13 +369,7 @@ const net = new Net({
   onSnapshot: (msg) => {
     interp.add(msg);
     if (import.meta.env.DEV) lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
-    const shots = msg.shots ?? [];
-    for (const shot of shots) {
-      // Our own swing already played on the click, unless the server made it a Smash.
-      if (shot.slot === selfSlot && shot.kind !== "smash") continue;
-      scene.triggerSwing(shot.slot, shot.kind);
-    }
-    scene.onEvents(shots, msg.contacts ?? []);
+    events.schedule(msg.serverTime, msg.shots ?? [], msg.contacts ?? []);
     if (selfSlot) {
       const me = msg.players.find((p) => p.slot === selfSlot);
       if (me) predictor.reconcile({ x: me.pos.x, z: me.pos.z }, me.ack, selfSide(), selfLocked());
@@ -506,6 +506,25 @@ function updateReactions(framePos: Map<string, { x: number; z: number }>): void 
   }
 }
 
+/**
+ * One snapshot's shots and contacts, now that the rendered ball has reached them:
+ * avatar swings, then hit feedback. Our own swing already played on the click,
+ * unless the server made it a Smash.
+ */
+function playEvents(
+  _serverTime: number,
+  shots: readonly ShotEvent[],
+  contacts: readonly ContactEvent[],
+  lateMs: number,
+): void {
+  if (lateMs > EVENT_STALE_MS) return;
+  for (const shot of shots) {
+    if (shot.slot === selfSlot && shot.kind !== "smash") continue;
+    scene.triggerSwing(shot.slot, shot.kind);
+  }
+  scene.onEvents(shots, contacts);
+}
+
 // ── Render / input loop ──────────────────────────────────────────────────────
 
 renderHud();
@@ -547,6 +566,7 @@ scene.start((dt) => {
   }
 
   interp.update(dt * 1000);
+  events.drain(interp.renderTime, playEvents);
   const s = interp.sample();
   const framePos = new Map<string, { x: number; z: number }>();
   if (s) {

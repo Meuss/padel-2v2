@@ -151,3 +151,26 @@ describe("cutawaySide", () => {
     expect(cutawaySide(17)).toBe(1);
   });
 });
+
+describe("CameraRig.addShake", () => {
+  const rig = () => {
+    const cam = new THREE.PerspectiveCamera(36, 1, 0.1, 300);
+    return { cam, rig: new CameraRig(cam) };
+  };
+
+  it("offsets the camera by at most the amplitude for one frame, then returns to the unshaken path", () => {
+    const a = rig();
+    const b = rig();
+    a.rig.update(1 / 60);
+    b.rig.update(1 / 60);
+    b.rig.addShake(0.06);
+    a.rig.update(1 / 60);
+    b.rig.update(1 / 60);
+    const d = b.cam.position.clone().sub(a.cam.position);
+    expect(d.length()).toBeGreaterThan(0);
+    expect(Math.max(Math.abs(d.x), Math.abs(d.y), Math.abs(d.z))).toBeLessThanOrEqual(0.06);
+    a.rig.update(1 / 60);
+    b.rig.update(1 / 60);
+    expect(b.cam.position.distanceTo(a.cam.position)).toBeLessThan(1e-9);
+  });
+});

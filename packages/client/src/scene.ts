@@ -28,6 +28,7 @@ import { broadcastCamPose, CameraRig, cutawaySide } from "./world/cameras.js";
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js";
+import { Feedback } from "./world/feedback.js";
 import { PALETTE } from "./world/palette.js";
 import { QualityMonitor, type Quality } from "./world/quality.js";
 
@@ -36,6 +37,8 @@ const MAX_PIXEL_RATIO = { high: 1.75, low: 1 } as const;
 
 export class PadelScene {
   readonly scene = new THREE.Scene();
+  /** Hit feedback: Timing arcs, ball trail, impact flashes, ground marker, Smash shake. */
+  private feedback = new Feedback(this.scene, "high");
   private renderer: THREE.WebGLRenderer;
   private camera: THREE.PerspectiveCamera;
   private ball: THREE.Mesh;
@@ -131,6 +134,7 @@ export class PadelScene {
     this.quality = q;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO[q]));
     this.arena.setQuality(q);
+    this.feedback.setQuality(q);
     if (q === "high" && !this.composer) {
       // A multisampled HDR target keeps the antialiasing that the default framebuffer had.
       const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
@@ -244,8 +248,11 @@ export class PadelScene {
     this.players.get(slot)?.swing(kind === "smash" ? "smash" : "drive");
   }
 
-  /** Shots and ball contacts from a snapshot, for effects and sound. A no-op for now. */
-  onEvents(_shots: readonly ShotEvent[], _contacts: readonly ContactEvent[]): void {}
+  /** Shots and ball contacts, played when the rendered ball reaches them. */
+  onEvents(shots: readonly ShotEvent[], contacts: readonly ContactEvent[]): void {
+    for (const e of shots) this.feedback.shot(e, this.players.get(e.slot)?.root.position ?? e.pos);
+    for (const e of contacts) this.feedback.contact(e);
+  }
 
   /** Flash a red highlight on whatever caused the lost point. */
   showFault(h: FaultHighlight): void {
@@ -332,6 +339,7 @@ export class PadelScene {
 
   setBall(x: number, y: number, z: number): void {
     this.ball.position.set(x, y, z);
+    this.feedback.setBall(x, y, z);
   }
 
   setPlayer(slot: Slot, x: number, y: number, z: number, yaw: number): void {
@@ -372,6 +380,7 @@ export class PadelScene {
     this.arena.update(dt);
     for (const a of this.players.values()) a.update(dt);
     this.updateMarkers(now);
+    this.rig.addShake(this.feedback.update(dt).shake);
     this.rig.update(dt);
     this.endWalls?.update(cutawaySide(this.rig.cameraZ), dt);
     this.renderer.info.reset();

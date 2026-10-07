@@ -13,4 +13,8 @@ export const PALETTE = {
   rojo: "#d8383a",
   joints: "#1a1d26",
   ball: "#e4f23a",
+  /** Timing arc and label: perfect is green; early and late share amber (the label tells them apart). */
+  timingPerfect: "#7bd13a",
+  timingEarly: "#f5a524",
+  timingLate: "#f5a524",
 } as const;
