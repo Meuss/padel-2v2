@@ -2,6 +2,7 @@
  * LED ribbon content: which messages the boards cycle through (pure, tested)
  * and how they are painted onto the shared 2048×128 board canvas.
  */
+import type { Team } from "@padel/shared";
 import { PALETTE } from "./palette.js";
 
 export interface BoardState {
@@ -27,6 +28,18 @@ function team(names: string[]): string {
     .map((n) => n.trim().toUpperCase())
     .filter((n) => n !== "")
     .join(" · ");
+}
+
+/**
+ * The team that won the point, game or match named in a server match event
+ * (`Point — Blue`, `Game — Red (2-3)`, `Set & Match — Blue! (6-4)`), or null when
+ * the event has no winner (`Set reset`, faults, lets). Mirrors TEAM_NAME in
+ * server/src/match.ts.
+ */
+export function teamFromEvent(event: string | null): Team | null {
+  const m = event?.match(/^(?:Point|Game|Set & Match) — (Blue|Red)\b/);
+  if (!m) return null;
+  return m[1] === "Blue" ? "A" : "B";
 }
 
 /** Messages the LED ribbon cycles through, in order. Pure. */

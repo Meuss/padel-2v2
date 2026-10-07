@@ -19,6 +19,7 @@ import type { ConnStatus } from "./net.js";
 import { Net } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
+import { teamFromEvent } from "./world/boards.js";
 
 const app = document.getElementById("app")!;
 const hud = document.getElementById("hud")!;
@@ -134,11 +135,13 @@ function renderBoards(): void {
   });
 }
 
-/** Cheer once per new point/game/set event. */
+/** Cheer (and let the winners celebrate) once per new point/game/set event. */
 function maybeCheer(event: string | null): void {
   if (event === lastCheered) return;
   lastCheered = event;
   if (event && /^(Point|Game|Set)/.test(event)) scene.cheer(event.startsWith("Point") ? 0.5 : 1);
+  const winner = event && /^(Point|Game) /.test(event) ? teamFromEvent(event) : null;
+  if (winner) scene.celebrate(winner);
 }
 
 function renderServing(): void {
@@ -298,7 +301,10 @@ const net = new Net({
     state.players = msg.players.length;
     state.spectators = msg.spectatorCount;
     names.clear();
-    for (const p of msg.players) names.set(p.slot, { name: p.name, team: p.team });
+    for (const p of msg.players) {
+      names.set(p.slot, { name: p.name, team: p.team });
+      scene.setPlayerName(p.slot, p.name);
+    }
     renderHud();
     renderServing();
     renderBoards();
@@ -505,6 +511,7 @@ scene.start((dt) => {
   const framePos = new Map<string, { x: number; z: number }>();
   if (s) {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
+    scene.setBallSide(s.ball.z);
     const present = new Set<string>();
     const predicted = predictor.renderPosition(dt);
     for (const p of s.players) {

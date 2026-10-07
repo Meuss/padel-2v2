@@ -10,7 +10,6 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   BALL,
-  PLAYER,
   type CourtConfig,
   type FaultHighlight,
   type Slot,
@@ -18,17 +17,20 @@ import {
   type Vec2,
 } from "@padel/shared";
 import { Arena } from "./world/arena.js";
+import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes } from "./world/court.js";
-
-const TEAM_COLOR: Record<Team, number> = { A: 0x3b82f6, B: 0xef4444 };
 
 export class PadelScene {
   readonly scene = new THREE.Scene();
   private renderer: THREE.WebGLRenderer;
   private camera: THREE.PerspectiveCamera;
   private ball: THREE.Mesh;
-  private players = new Map<Slot, THREE.Group>();
+  private avatars = new AvatarFactory(glbModelSource);
+  private players = new Map<Slot, Avatar>();
+  private names = new Map<Slot, string>();
+  /** Duration of the frame being built, for avatar speed (set before the frame callback). */
+  private frameDt = 1 / 60;
   private court: CourtConfig | null = null;
   private cameraMode: "spectator" | "player" = "spectator";
   private camTeam: Team = "A";
@@ -36,7 +38,6 @@ export class PadelScene {
   private camLook = new THREE.Vector3(0, 1, 0);
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private swingStart = new Map<Slot, number>();
   private arena: Arena;
   private lastRender = performance.now();
   private markers: { mesh: THREE.Mesh; born: number; ttl: number }[] = [];
@@ -97,132 +98,32 @@ export class PadelScene {
     this.arena.cheer(intensity);
   }
 
-  /** Lazily create and return the avatar group for a slot. */
-  private avatar(slot: Slot): THREE.Group {
-    let g = this.players.get(slot);
-    if (g) return g;
-    g = new THREE.Group();
-    const group = g;
+  /** Lazily create and return the avatar for a slot. */
+  private avatar(slot: Slot): Avatar {
+    let a = this.players.get(slot);
+    if (a) return a;
     const team: Team = slot.startsWith("A") ? "A" : "B";
-    const color = TEAM_COLOR[team];
+    a = this.avatars.create(slot, team);
+    a.setName(this.names.get(slot) ?? "");
+    this.scene.add(a.root);
+    this.players.set(slot, a);
+    return a;
+  }
 
-    // Stylized low-poly player: skin head/arms/legs, team-coloured jersey + cap,
-    // white shorts and shoes. (Replaces the old capsule.)
-    const skin = new THREE.MeshStandardMaterial({ color: 0xf2c9a0, roughness: 0.85 });
-    const jersey = new THREE.MeshStandardMaterial({ color, roughness: 0.55 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xeef2f7, roughness: 0.7 });
-    const part = (
-      geo: THREE.BufferGeometry,
-      mat: THREE.Material,
-      x: number,
-      y: number,
-      z: number,
-    ): THREE.Mesh => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      group.add(m);
-      return m;
-    };
+  /** Nickname printed on the back of a slot's shirt. */
+  setPlayerName(slot: Slot, name: string): void {
+    this.names.set(slot, name);
+    this.players.get(slot)?.setName(name);
+  }
 
-    for (const sx of [-0.12, 0.12]) {
-      part(new THREE.CylinderGeometry(0.085, 0.075, 0.72, 12), skin, sx, 0.46, 0); // leg
-      part(new THREE.BoxGeometry(0.16, 0.09, 0.3), white, sx, 0.05, 0.05); // shoe
-    }
-    part(new THREE.BoxGeometry(0.44, 0.26, 0.3), white, 0, 0.86, 0); // shorts
-    part(new THREE.CylinderGeometry(0.21, 0.27, 0.62, 16), jersey, 0, 1.2, 0); // torso
-    part(new THREE.SphereGeometry(0.21, 14, 12), jersey, 0, 1.48, 0).scale.set(1, 0.5, 1); // shoulders
+  /** Every avatar of `team` celebrates (a won point or game). */
+  celebrate(team: Team): void {
+    for (const [slot, a] of this.players) if (slot.startsWith(team)) a.celebrate();
+  }
 
-    part(new THREE.SphereGeometry(0.17, 18, 14), skin, 0, 1.66, 0); // head
-    part(
-      new THREE.SphereGeometry(0.185, 18, 14, 0, Math.PI * 2, 0, Math.PI / 2),
-      jersey,
-      0,
-      1.71,
-      0,
-    ); // cap dome
-    part(new THREE.BoxGeometry(0.34, 0.04, 0.16), jersey, 0, 1.69, 0.16); // cap brim
-
-    // Racket: a real padel paddle — short grip, throat, and a solid perforated
-    // teardrop face with an accent rim. Built in `racketModel`, then held out at
-    // the hand inside `racket` (which the swing animation rotates).
-    const racket = new THREE.Group();
-    const racketModel = new THREE.Group();
-    const gripMat = new THREE.MeshStandardMaterial({
-      color: 0x15171c,
-      roughness: 0.85,
-    });
-
-    const grip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.024, 0.15, 12),
-      gripMat,
-    );
-    racketModel.add(grip);
-    const butt = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, 0.02, 12),
-      gripMat,
-    );
-    butt.position.y = -0.085;
-    racketModel.add(butt);
-
-    const accent = team === "A" ? 0x1e3a8a : 0x7f1d1d;
-    const throat = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.032, 0.02, 0.07, 12),
-      new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 }),
-    );
-    throat.position.y = 0.11;
-    racketModel.add(throat);
-
-    // Solid teardrop padel face: an extruded, beveled bat with real through-holes
-    // (a teardrop outline + a grid of circular holes), not a flat round paddle.
-    const faceY = 0.3;
-    const W = 0.135;
-    const H = 0.16;
-    const shape = new THREE.Shape();
-    shape.moveTo(0, -H);
-    shape.bezierCurveTo(W * 0.95, -H * 0.55, W, H * 0.25, W * 0.68, H * 0.72);
-    shape.bezierCurveTo(W * 0.4, H, -W * 0.4, H, -W * 0.68, H * 0.72);
-    shape.bezierCurveTo(-W, H * 0.25, -W * 0.95, -H * 0.55, 0, -H);
-    for (let gy = -0.07; gy <= 0.11; gy += 0.036) {
-      const row = Math.round((gy + 0.07) / 0.036);
-      const offx = (row % 2) * 0.018;
-      for (let gx = -0.09 + offx; gx <= 0.09; gx += 0.036) {
-        if (Math.hypot(gx, gy - 0.015) < 0.1) {
-          const hole = new THREE.Path();
-          hole.absarc(gx, gy, 0.0115, 0, Math.PI * 2, true);
-          shape.holes.push(hole);
-        }
-      }
-    }
-    const depth = 0.04;
-    const faceGeo = new THREE.ExtrudeGeometry(shape, {
-      depth,
-      bevelEnabled: true,
-      bevelThickness: 0.012,
-      bevelSize: 0.01,
-      bevelSegments: 1,
-      curveSegments: 10,
-    });
-    faceGeo.translate(0, 0, -depth / 2);
-    const face = new THREE.Mesh(
-      faceGeo,
-      new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.45 }),
-    );
-    face.position.set(0, faceY, 0);
-    face.castShadow = true;
-    racketModel.add(face);
-
-    // Hold the paddle at the right hand, face toward the hitting direction.
-    racketModel.position.set(0.46, PLAYER.height * 0.5, 0.12);
-    racketModel.rotation.set(-0.15, 0, -0.45);
-    racketModel.castShadow = true;
-    racket.add(racketModel);
-    g.add(racket);
-    g.userData.racket = racket;
-
-    this.scene.add(g);
-    this.players.set(slot, g);
-    return g;
+  /** Tell each avatar whether the ball is in the half it stands in (ready vs idle stance). */
+  setBallSide(ballZ: number): void {
+    for (const a of this.players.values()) a.setBallSide(Math.sign(ballZ) === Math.sign(a.root.position.z));
   }
 
   /** Render counters from the last frame (used by the shoot tool and quality checks). */
@@ -266,7 +167,7 @@ export class PadelScene {
 
   /** Start a racket swing animation for a slot's avatar. */
   triggerSwing(slot: Slot): void {
-    this.swingStart.set(slot, performance.now());
+    this.players.get(slot)?.swing("drive");
   }
 
   /** Flash a red highlight on whatever caused the lost point. */
@@ -294,8 +195,8 @@ export class PadelScene {
 
     let pos = h.pos;
     if (h.kind === "player" && h.slot) {
-      const g = this.players.get(h.slot);
-      if (g) pos = { x: g.position.x, y: 0, z: g.position.z };
+      const a = this.players.get(h.slot);
+      if (a) pos = { x: a.root.position.x, y: 0, z: a.root.position.z };
     }
 
     if (h.kind === "ground" || h.kind === "out" || h.kind === "player") {
@@ -330,26 +231,6 @@ export class PadelScene {
     }
   }
 
-  private updateSwings(now: number): void {
-    const DURATION = 320;
-    const AMP = 1.7;
-    for (const [slot, group] of this.players) {
-      const racket = group.userData.racket as THREE.Group | undefined;
-      if (!racket) continue;
-      const start = this.swingStart.get(slot);
-      if (start === undefined) continue;
-      const p = (now - start) / DURATION;
-      if (p >= 1) {
-        racket.rotation.set(0, 0, 0);
-        this.swingStart.delete(slot);
-        continue;
-      }
-      // Sweep the racket across the front (+AMP → −AMP) with a forward dip.
-      racket.rotation.y = AMP * Math.cos(p * Math.PI);
-      racket.rotation.x = -0.5 * Math.sin(p * Math.PI);
-    }
-  }
-
   setSpectatorCamera(): void {
     this.cameraMode = "spectator";
     this.camPos.set(0, 16, 24);
@@ -376,17 +257,12 @@ export class PadelScene {
   }
 
   setPlayer(slot: Slot, x: number, y: number, z: number, yaw: number): void {
-    const g = this.avatar(slot);
-    g.position.set(x, y, z);
-    g.rotation.y = yaw;
+    this.avatar(slot).setPose(x, y, z, yaw, this.frameDt);
   }
 
   removePlayer(slot: Slot): void {
-    const g = this.players.get(slot);
-    if (g) {
-      this.scene.remove(g);
-      this.players.delete(slot);
-    }
+    this.players.get(slot)?.dispose();
+    this.players.delete(slot);
   }
 
   private onResize = (): void => {
@@ -405,7 +281,7 @@ export class PadelScene {
     const dt = (now - this.lastRender) / 1000;
     this.lastRender = now;
     this.arena.update(dt);
-    this.updateSwings(now);
+    for (const a of this.players.values()) a.update(dt);
     this.updateMarkers(now);
     // Smoothly ease the camera toward its target pose.
     this.camera.position.lerp(this.camPos, 0.12);
@@ -419,6 +295,7 @@ export class PadelScene {
       const now = performance.now();
       const dt = (now - last) / 1000;
       last = now;
+      this.frameDt = dt;
       frame(dt);
       this.render();
     });
