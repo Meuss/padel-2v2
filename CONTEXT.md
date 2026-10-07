@@ -23,7 +23,7 @@ _Avoid_: Spot, place
 ## Teams
 
 **Azul / Rojo**:
-The two Teams, named in Spanish after their kit colours. Always Azul and Rojo in anything a person reads.
+The two Teams, named in Spanish after their kit colours. Always Azul and Rojo in anything a person reads. They are the only Spanish words in the game: all other copy is English broadcast copy.
 _Avoid_: Blue/Red, Team A/B
 
 **Side**:
@@ -40,7 +40,7 @@ Standard padel scoring units; a Match is one Set.
 
 **Golden point**:
 The deciding point at 40–40; whichever Team wins it takes the Game. Replaces advantage.
-_Avoid_: Deuce, punto de oro (in code)
+_Avoid_: Deuce, advantage, punto de oro
 
 **Tiebreak**:
 The Game played at 6–6 to decide the Set.
@@ -55,7 +55,7 @@ A Serve or Shot that breaks the rules. Faults always come from what happened on 
 The vote, opened automatically when a Match ends, to start a new Match with the same Seats.
 
 **Score call**:
-The umpire-style reading of the score after each Point (e.g. "Treinta–quince"), shown as text, never spoken.
+The umpire-style reading of the score after each Point (e.g. "Thirty–Fifteen"), shown as text, never spoken.
 
 ## Shots
 
@@ -88,11 +88,11 @@ _Avoid_: Spectator cam, TV cam
 A short re-showing of a notable Point between Points, seen by everyone. Any Player can skip it, and it never delays the Serve.
 
 **Banner**:
-The big lower-third caption shown between Points (JUEGO, PUNTO DE ORO, SET).
+The big lower-third caption shown between Points (GAME, GOLDEN POINT, SET & MATCH).
 _Avoid_: Flash, toast
 
 **Final card**:
-The broadcast-style results screen at the end of a Match: winners, set score and a few Match stats.
+The broadcast-style results screen at the end of a Match: winners, set score and a few Match stats ("SET & MATCH" strip, "REMATCH" vote).
 
 **Take seat**:
 What a Spectator does to replace a Bot or fill an empty Seat. It happens between Points.

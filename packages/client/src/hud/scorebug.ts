@@ -109,7 +109,7 @@ export class ScoreBug {
     };
     this.rows = { A: makeRow("A"), B: makeRow("B") };
 
-    this.warmup = el("div", "sb-warmup", "CALENTAMIENTO");
+    this.warmup = el("div", "sb-warmup", "WARM-UP");
     this.callEl = el("div", "sb-call");
     this.callEl.setAttribute("role", "status");
     this.callEl.setAttribute("aria-live", "polite");

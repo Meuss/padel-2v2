@@ -10,27 +10,27 @@ describe("teamLabel", () => {
 
 describe("scoreCall", () => {
   it.each([
-    ["15", "0", "QUINCE – NADA"],
-    ["0", "30", "NADA – TREINTA"],
-    ["40", "15", "CUARENTA – QUINCE"],
-    ["30", "40", "TREINTA – CUARENTA"],
+    ["15", "0", "FIFTEEN – LOVE"],
+    ["0", "30", "LOVE – THIRTY"],
+    ["40", "15", "FORTY – FIFTEEN"],
+    ["30", "40", "THIRTY – FORTY"],
   ])("calls %s-%s as %s", (s, r, call) => {
     expect(scoreCall(s, r, false)).toBe(call);
   });
 
   it("puts the server's score first", () => {
-    expect(scoreCall("0", "15", false)).toBe("NADA – QUINCE");
-    expect(scoreCall("15", "0", false)).toBe("QUINCE – NADA");
+    expect(scoreCall("0", "15", false)).toBe("LOVE – FIFTEEN");
+    expect(scoreCall("15", "0", false)).toBe("FIFTEEN – LOVE");
   });
 
-  it("calls equal scores below 40 IGUALES", () => {
-    expect(scoreCall("0", "0", false)).toBe("NADA IGUALES");
-    expect(scoreCall("15", "15", false)).toBe("QUINCE IGUALES");
-    expect(scoreCall("30", "30", false)).toBe("TREINTA IGUALES");
+  it("calls equal scores below 40 ALL", () => {
+    expect(scoreCall("0", "0", false)).toBe("LOVE ALL");
+    expect(scoreCall("15", "15", false)).toBe("FIFTEEN ALL");
+    expect(scoreCall("30", "30", false)).toBe("THIRTY ALL");
   });
 
-  it("calls deuce PUNTO DE ORO", () => {
-    expect(scoreCall("40", "40", false)).toBe("PUNTO DE ORO");
+  it("calls deuce GOLDEN POINT", () => {
+    expect(scoreCall("40", "40", false)).toBe("GOLDEN POINT");
   });
 
   it("calls a tiebreak in digits, server first, even when level", () => {
@@ -47,13 +47,13 @@ describe("bannerFor", () => {
 
   it("calls a game with the games line, Azul first", () => {
     expect(bannerFor("game", "A", 4, 3, null)).toEqual({
-      title: "JUEGO",
+      title: "GAME",
       sub: "AZUL 4 – 3 ROJO",
       tone: "team",
       team: "A",
     });
     expect(bannerFor("game", "B", 2, 5, null)).toEqual({
-      title: "JUEGO",
+      title: "GAME",
       sub: "AZUL 2 – 5 ROJO",
       tone: "team",
       team: "B",
@@ -62,53 +62,53 @@ describe("bannerFor", () => {
 
   it("calls the set with the winner and the winner's games first", () => {
     expect(bannerFor("set", "B", 4, 6, null)).toEqual({
-      title: "SET Y PARTIDO",
-      sub: "GANA ROJO 6 – 4",
+      title: "SET & MATCH",
+      sub: "ROJO WINS 6 – 4",
       tone: "team",
       team: "B",
     });
-    expect(bannerFor("set", "A", 7, 6, null)?.sub).toBe("GANA AZUL 7 – 6");
+    expect(bannerFor("set", "A", 7, 6, null)?.sub).toBe("AZUL WINS 7 – 6");
   });
 
-  it("calls a first-serve fault FALTA with the reason", () => {
+  it("calls a first-serve fault FAULT with the reason", () => {
     expect(bannerFor("fault", null, 1, 1, "Into the net")).toEqual({
-      title: "FALTA",
+      title: "FAULT",
       sub: "Into the net",
       tone: "fault",
       team: null,
     });
   });
 
-  it("calls a fault with a point winner DOBLE FALTA", () => {
+  it("calls a fault with a point winner DOUBLE FAULT", () => {
     expect(bannerFor("fault", "B", 1, 1, "Double fault — long")).toEqual({
-      title: "DOBLE FALTA",
+      title: "DOUBLE FAULT",
       sub: "Double fault — long",
       tone: "fault",
       team: "B",
     });
   });
 
-  it("calls a let LET, REPETIR SAQUE", () => {
+  it("calls a let LET, REPLAY THE SERVE", () => {
     expect(bannerFor("let", null, 0, 0, null)).toEqual({
       title: "LET",
-      sub: "REPETIR SAQUE",
+      sub: "REPLAY THE SERVE",
       tone: "neutral",
       team: null,
     });
   });
 
-  it("calls the match start PARTIDO, AZUL vs ROJO", () => {
+  it("calls the match start MATCH, AZUL vs ROJO", () => {
     expect(bannerFor("start", null, 0, 0, null)).toEqual({
-      title: "PARTIDO",
+      title: "MATCH",
       sub: "AZUL vs ROJO",
       tone: "neutral",
       team: null,
     });
   });
 
-  it("calls a set reset REINICIO with no sub line", () => {
+  it("calls a set reset RESET with no sub line", () => {
     expect(bannerFor("reset", null, 0, 0, null)).toEqual({
-      title: "REINICIO",
+      title: "RESET",
       sub: null,
       tone: "neutral",
       team: null,

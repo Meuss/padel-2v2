@@ -94,7 +94,7 @@ export function pointOutcome(
   if (!pointEvent) return null;
   return {
     winner: m.eventTeam,
-    // Played at 40–40 outside a tiebreak: the deciding punto de oro.
+    // Played at 40–40 outside a tiebreak: the deciding golden point.
     goldenPoint: !prev.tiebreak && prev.pointA === "40" && prev.pointB === "40",
     matchPoint: m.eventKind === "set",
   };

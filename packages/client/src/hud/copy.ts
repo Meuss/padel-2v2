@@ -1,6 +1,6 @@
 /**
- * Spanish broadcast copy for the match graphics (score call, Banner, team names).
- * Pure: no DOM, so it is unit tested directly. UI chrome (buttons, prompts) stays English.
+ * English broadcast copy for the match graphics (score call, Banner); the team names stay AZUL / ROJO.
+ * Pure: no DOM, so it is unit tested directly.
  */
 import type { MatchEventKind, Team } from "@padel/shared";
 
@@ -8,12 +8,12 @@ import type { MatchEventKind, Team } from "@padel/shared";
 const DASH = " – ";
 
 const POINT_WORDS: Record<string, string> = {
-  "0": "NADA",
-  "15": "QUINCE",
-  "30": "TREINTA",
-  "40": "CUARENTA",
+  "0": "LOVE",
+  "15": "FIFTEEN",
+  "30": "THIRTY",
+  "40": "FORTY",
   // Only reachable with golden point turned off.
-  Ad: "VENTAJA",
+  Ad: "ADVANTAGE",
 };
 
 export function teamLabel(t: Team): "AZUL" | "ROJO" {
@@ -24,11 +24,11 @@ function pointWord(label: string): string {
   return POINT_WORDS[label] ?? label.toUpperCase();
 }
 
-/** Spanish score call, server's score first. pointServer/pointReceiver are MatchMsg point labels. */
+/** English score call, server's score first. pointServer/pointReceiver are MatchMsg point labels. */
 export function scoreCall(pointServer: string, pointReceiver: string, tiebreak: boolean): string {
   if (tiebreak) return `${pointServer}${DASH}${pointReceiver}`;
   if (pointServer === pointReceiver) {
-    return pointServer === "40" ? "PUNTO DE ORO" : `${pointWord(pointServer)} IGUALES`;
+    return pointServer === "40" ? "GOLDEN POINT" : `${pointWord(pointServer)} ALL`;
   }
   return `${pointWord(pointServer)}${DASH}${pointWord(pointReceiver)}`;
 }
@@ -42,7 +42,7 @@ export interface BannerCopy {
 
 /** The Banner for a point that makes it 40–40: the games, then the points (as in comp 3). */
 export function goldenPointBanner(gamesA: number, gamesB: number): BannerCopy {
-  return { title: "PUNTO DE ORO", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO · 40${DASH}40`, tone: "neutral", team: null };
+  return { title: "GOLDEN POINT", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO · 40${DASH}40`, tone: "neutral", team: null };
 }
 
 /**
@@ -60,21 +60,21 @@ export function bannerFor(
     case "point":
       return null;
     case "game":
-      return { title: "JUEGO", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO`, tone: "team", team };
+      return { title: "GAME", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO`, tone: "team", team };
     case "set": {
       if (team === null) {
-        return { title: "SET Y PARTIDO", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO`, tone: "team", team };
+        return { title: "SET & MATCH", sub: `AZUL ${gamesA}${DASH}${gamesB} ROJO`, tone: "team", team };
       }
       const [won, lost] = team === "A" ? [gamesA, gamesB] : [gamesB, gamesA];
-      return { title: "SET Y PARTIDO", sub: `GANA ${teamLabel(team)} ${won}${DASH}${lost}`, tone: "team", team };
+      return { title: "SET & MATCH", sub: `${teamLabel(team)} WINS ${won}${DASH}${lost}`, tone: "team", team };
     }
     case "fault":
-      return { title: team === null ? "FALTA" : "DOBLE FALTA", sub: reason, tone: "fault", team };
+      return { title: team === null ? "FAULT" : "DOUBLE FAULT", sub: reason, tone: "fault", team };
     case "let":
-      return { title: "LET", sub: "REPETIR SAQUE", tone: "neutral", team: null };
+      return { title: "LET", sub: "REPLAY THE SERVE", tone: "neutral", team: null };
     case "start":
-      return { title: "PARTIDO", sub: "AZUL vs ROJO", tone: "neutral", team: null };
+      return { title: "MATCH", sub: "AZUL vs ROJO", tone: "neutral", team: null };
     case "reset":
-      return { title: "REINICIO", sub: null, tone: "neutral", team: null };
+      return { title: "RESET", sub: null, tone: "neutral", team: null };
   }
 }

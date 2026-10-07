@@ -28,7 +28,7 @@ Glossary: `CONTEXT.md`.
 ## Global Constraints
 
 - Gate: `pnpm typecheck && pnpm test && pnpm build`. Bump `PROTOCOL_VERSION` to **4** in Task 1.
-- **Copy:** Spanish broadcast vocabulary for match graphics. The Teams are AZUL and ROJO. Score words are NADA / QUINCE / TREINTA / CUARENTA / IGUALES / PUNTO DE ORO / JUEGO / SET Y PARTIDO / FALTA / DOBLE FALTA / LET / REPETIR. UI chrome stays in English: buttons, prompts, the nickname screen and the loading screen.
+- **Copy:** Spanish broadcast vocabulary for match graphics. The Teams are AZUL and ROJO. Score words are NADA / QUINCE / TREINTA / CUARENTA / IGUALES / PUNTO DE ORO / JUEGO / SET Y PARTIDO / FALTA / DOBLE FALTA / LET / REPETIR. UI chrome stays in English: buttons, prompts, the nickname screen and the loading screen. _Superseded 2026-10-08: English copy except team names._
 - **Design tokens** live in `packages/client/src/hud/hud.css` as CSS custom properties on `:root`:
 
   | Token | Value |

@@ -63,7 +63,7 @@ describe("bots use every shot with imperfect timing", () => {
     expect([...timings].sort()).toEqual(["early", "late", "perfect"]);
     expect(points.some((p) => p.winner === "A")).toBe(true);
     expect(points.some((p) => p.winner === "B")).toBe(true);
-    expect(points.filter((p) => p.reason?.startsWith("Double hit"))).toEqual([]);
+    expect(points.filter((p) => p.reason?.startsWith("DOUBLE HIT"))).toEqual([]);
   }, LONG_TEST_MS);
 
   it("bots Smash high balls: a Smash appears in at least 3 of 5 seeded 2-minute matches", async () => {
@@ -81,7 +81,7 @@ describe("bots use every shot with imperfect timing", () => {
       const { shots, points } = await botMatch(seed, 120);
       smashes += shots.filter((s) => s.kind === "smash").length;
       const afterSmash = points.filter((p) => p.lastShot === "smash");
-      expect(afterSmash.filter((p) => p.reason?.startsWith("Hit the wall on the full"))).toEqual([]);
+      expect(afterSmash.filter((p) => p.reason?.startsWith("HIT THE"))).toEqual([]);
     }
     expect(smashes).toBeGreaterThan(0);
   }, LONG_TEST_MS);

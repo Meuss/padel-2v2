@@ -409,7 +409,7 @@ function currentFinal(): FinalModel | null {
 
 /**
  * After each match update: a finished match makes the Final card due FINAL_DELAY_MS later; a new
- * match (the Rematch, a reset) takes it off, and the PARTIDO Banner opens it.
+ * match (the Rematch, a reset) takes it off, and the MATCH Banner opens it.
  */
 function updateFinal(): void {
   const model = currentFinal();
@@ -1083,8 +1083,8 @@ function removeLabel(slot: Slot): void {
 /** A sample Banner for a kind ("golden", "game", "set", "fault", "let", "start", "reset") or its title. */
 function devBannerItem(raw: string): BannerItem | null {
   const k = raw.toLowerCase().replace(/[\s_-]+/g, "");
-  if (k === "golden" || k === "puntodeoro") return { copy: goldenPointBanner(5, 4), durationMs: Infinity };
-  const kinds = { game: "juego", set: "setypartido", fault: "falta", let: "let", start: "partido", reset: "reinicio" } as const;
+  if (k === "golden" || k === "goldenpoint") return { copy: goldenPointBanner(5, 4), durationMs: Infinity };
+  const kinds = { game: "game", set: "set&match", fault: "fault", let: "let", start: "match", reset: "reset" } as const;
   for (const [kind, title] of Object.entries(kinds) as [keyof typeof kinds, string][]) {
     if (k !== kind && k !== title) continue;
     const copy = bannerFor(kind, kind === "game" || kind === "set" ? "A" : null, 5, 4, kind === "fault" ? "Into the net" : null);
@@ -1111,7 +1111,7 @@ function devFinalMatch(): MatchMsg {
     serveBox: null,
     awaitingServe: false,
     tossing: false,
-    event: "SET Y PARTIDO",
+    event: "SET & MATCH",
     eventKind: "set",
     eventTeam: winner,
     reason: null,

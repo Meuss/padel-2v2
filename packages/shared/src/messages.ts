@@ -234,7 +234,7 @@ export interface MatchMsg {
   awaitingServe: boolean;
   /** True while the server's toss is in the air (Space pressed, not yet struck). */
   tossing: boolean;
-  /** Transient broadcast text ("PUNTO — AZUL", "FALTA", "LET"…), for display only: read `eventKind`. */
+  /** Transient broadcast text ("POINT — AZUL", "FAULT", "LET"…), for display only: read `eventKind`. */
   event: string | null;
   /** What `event` is; null when there is none. */
   eventKind: MatchEventKind | null;

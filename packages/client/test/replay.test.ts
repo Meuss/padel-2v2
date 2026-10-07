@@ -79,7 +79,7 @@ describe("isNotable", () => {
 
 describe("pointOutcome", () => {
   it("reads a won point, with golden and match point flags", () => {
-    expect(pointOutcome(msg({ phase: "between", eventKind: "point", eventTeam: "A", event: "PUNTO — AZUL" }), msg())).toEqual({
+    expect(pointOutcome(msg({ phase: "between", eventKind: "point", eventTeam: "A", event: "POINT — AZUL" }), msg())).toEqual({
       winner: "A",
       goldenPoint: false,
       matchPoint: false,
@@ -94,7 +94,7 @@ describe("pointOutcome", () => {
     expect(pointOutcome(msg({ eventKind: "let" }), msg())).toBeNull();
   });
   it("only a new event counts, and never the first state seen", () => {
-    const won = msg({ phase: "between", eventKind: "point", eventTeam: "A", event: "PUNTO — AZUL" });
+    const won = msg({ phase: "between", eventKind: "point", eventTeam: "A", event: "POINT — AZUL" });
     expect(pointOutcome(won, null)).toBeNull();
     expect(pointOutcome({ ...won, phase: "serve" }, won)).toBeNull();
   });

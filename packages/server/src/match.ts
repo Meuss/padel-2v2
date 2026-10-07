@@ -307,7 +307,7 @@ export class MatchEngine {
       if (team === this.hitterTeam) return false;
     } else if (this.hitterTeam !== null && team === this.hitterTeam) {
       // One side may not touch the ball twice in a row.
-      this.endPoint(now, other(team), "Double hit — one side touched the ball twice", {
+      this.endPoint(now, other(team), "DOUBLE HIT", {
         kind: "player",
         slot,
       });
@@ -334,7 +334,7 @@ export class MatchEngine {
         const t = (now - this.tossStartedAt) / 1000;
         const pos = this.tossPosition(t);
         if (t > TOSS.expireS) {
-          return this.serveFault(now, "Missed the toss", { kind: "player", slot: this.serverSlot! });
+          return this.serveFault(now, "MISSED THE TOSS", { kind: "player", slot: this.serverSlot! });
         }
         return { hold: pos };
       }
@@ -360,7 +360,7 @@ export class MatchEngine {
         this.serveNetTouched = true;
       } else if (kind === "wall") {
         // Touched a wall before bouncing in the box — fault.
-        return this.serveFault(now, "Serve hit the wall before bouncing", out(ball));
+        return this.serveFault(now, "SERVE HIT THE GLASS FIRST", out(ball));
       } else if (kind === "floor") {
         const inBox =
           sign(ball.z) === this.targetSide &&
@@ -369,7 +369,7 @@ export class MatchEngine {
           sign(ball.x) === this.targetXSign &&
           Math.abs(ball.x) <= HALF_W;
         if (!inBox) {
-          return this.serveFault(now, "Serve out — must land in the diagonal box", out(ball));
+          return this.serveFault(now, "SERVE OUT — WRONG BOX", out(ball));
         }
         if (this.serveNetTouched) {
           return this.serveLet(now); // net cord into the box → replay
@@ -384,7 +384,7 @@ export class MatchEngine {
     }
     // Left the cage before bouncing — fault.
     if (Math.abs(ball.x) > HALF_W + 0.3 || Math.abs(ball.z) > HALF_L + 0.3) {
-      return this.serveFault(now, "Serve out — long", out(ball));
+      return this.serveFault(now, "SERVE LONG", out(ball));
     }
     return { hold: null };
   }
@@ -407,7 +407,7 @@ export class MatchEngine {
     const pointTo = other(this.teamOf(this.serverSlot!)!);
     const action = this.endPoint(now, pointTo, `Double fault — ${why}`, highlight);
     // A game or set it decides is called as such; a plain point is called as the double fault.
-    if (this.eventKind === "point") this.setEvent("fault", pointTo, "DOBLE FALTA");
+    if (this.eventKind === "point") this.setEvent("fault", pointTo, "DOUBLE FAULT");
     return action;
   }
 
@@ -443,19 +443,19 @@ export class MatchEngine {
           this.bouncedTarget = true;
           this.stallSince = 0;
           if (this.bounceCount >= 2) {
-            return this.endPoint(now, this.hitterTeam!, "Two bounces — not returned in time", {
+            return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
               kind: "ground",
               pos: { ...ball },
             });
           }
         } else if (s === this.hitterSide) {
           if (!this.crossed) {
-            return this.endPoint(now, other(this.hitterTeam!), "Into the net — didn't clear", {
+            return this.endPoint(now, other(this.hitterTeam!), "INTO THE NET", {
               kind: "net",
               pos: { x: 0, y: COURT.netHeight, z: 0 },
             });
           }
-          return this.endPoint(now, this.hitterTeam!, "Unreturned", {
+          return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
             kind: "ground",
             pos: { ...ball },
           });
@@ -465,7 +465,7 @@ export class MatchEngine {
           return this.endPoint(
             now,
             other(this.hitterTeam!),
-            "Hit the wall on the full — must bounce on the floor first",
+            "HIT THE GLASS ON THE FULL",
             { kind: "wall", pos: { ...ball } },
           );
         }
@@ -474,11 +474,11 @@ export class MatchEngine {
 
     if (Math.abs(ball.x) > HALF_W + 0.3 || Math.abs(ball.z) > HALF_L + 0.3) {
       return this.bouncedTarget
-        ? this.endPoint(now, this.hitterTeam!, "Unreturnable — out off the bounce", {
+        ? this.endPoint(now, this.hitterTeam!, "OUT OFF THE BOUNCE", {
             kind: "out",
             pos: { ...ball },
           })
-        : this.endPoint(now, other(this.hitterTeam!), "Out — over the cage", {
+        : this.endPoint(now, other(this.hitterTeam!), "OUT — OVER THE CAGE", {
             kind: "out",
             pos: { ...ball },
           });
@@ -488,11 +488,11 @@ export class MatchEngine {
       if (this.stallSince === 0) this.stallSince = now;
       else if (now - this.stallSince > 1500) {
         return this.bouncedTarget
-          ? this.endPoint(now, this.hitterTeam!, "Not returned", {
+          ? this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
               kind: "ground",
               pos: { ...ball },
             })
-          : this.endPoint(now, other(this.hitterTeam!), "Didn't reach the other side", {
+          : this.endPoint(now, other(this.hitterTeam!), "SHORT — DIDN'T CROSS", {
               kind: "net",
               pos: { x: 0, y: COURT.netHeight, z: 0 },
             });
@@ -708,18 +708,18 @@ function eventText(kind: MatchEventKind, team: Team | null): string {
   const to = team ? ` — ${TEAM_CALL[team]}` : "";
   switch (kind) {
     case "point":
-      return `PUNTO${to}`;
+      return `POINT${to}`;
     case "game":
-      return `JUEGO${to}`;
+      return `GAME${to}`;
     case "set":
-      return `SET Y PARTIDO${to}`;
+      return `SET & MATCH${to}`;
     case "fault":
-      return "FALTA";
+      return "FAULT";
     case "let":
       return "LET";
     case "start":
-      return "PARTIDO";
+      return "MATCH";
     case "reset":
-      return "REINICIO";
+      return "RESET";
   }
 }

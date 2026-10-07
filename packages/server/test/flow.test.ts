@@ -52,7 +52,7 @@ describe("structured match events", () => {
     const { room, w, match } = await botRoom();
     room.step();
     expect(match().eventKind).toBe("start");
-    expect(match().event).toBe("PARTIDO");
+    expect(match().event).toBe("MATCH");
     expect(match().eventTeam).toBeNull();
 
     const won = (m: MatchMsg) => m.eventKind === "point" || m.eventKind === "game";
@@ -62,7 +62,7 @@ describe("structured match events", () => {
     const before = [...all].reverse().find((m) => m.phase === "serve")!;
     const winner: Team = scoreOf(end, "A") > scoreOf(before, "A") ? "A" : "B";
     expect(end.eventTeam).toBe(winner);
-    expect(end.event).toBe(`${end.eventKind === "point" ? "PUNTO" : "JUEGO"} — ${winner === "A" ? "AZUL" : "ROJO"}`);
+    expect(end.event).toBe(`${end.eventKind === "point" ? "POINT" : "GAME"} — ${winner === "A" ? "AZUL" : "ROJO"}`);
     expect(end.stats).toBeNull();
     room.stop();
   }, LONG_TEST_MS);
@@ -74,13 +74,13 @@ describe("structured match events", () => {
     const match = () => p.last("match")!;
     sendInput(room, "p1", { serve: true });
     expect(stepUntil(room, () => match().eventKind === "fault", 120)).not.toBeNull();
-    expect(match().event).toBe("FALTA");
+    expect(match().event).toBe("FAULT");
     expect(match().eventTeam).toBeNull();
     expect(stepUntil(room, () => match().phase === "serve", 200)).not.toBeNull();
     sendInput(room, "p1", { serve: true });
     expect(stepUntil(room, () => match().eventTeam !== null, 120)).not.toBeNull();
     expect(match().eventKind).toBe("fault");
-    expect(match().event).toBe("DOBLE FALTA");
+    expect(match().event).toBe("DOUBLE FAULT");
     expect(match().eventTeam).toBe("B");
     expect(match().pointB).toBe("15");
     room.stop();
@@ -100,7 +100,7 @@ describe("match stats", () => {
     const end = match();
     expect(end.phase).toBe("over");
     expect(end.eventKind).toBe("set");
-    expect(end.event).toBe("SET Y PARTIDO — AZUL");
+    expect(end.event).toBe("SET & MATCH — AZUL");
     const stats = end.stats!;
     expect(stats).not.toBeNull();
 
@@ -146,7 +146,7 @@ describe("rematch vote", () => {
     room.debugEndMatch("B");
     room.step();
     expect(p1.last("match")).toMatchObject({ phase: "over", winner: "B", eventKind: "set", eventTeam: "B" });
-    expect(p1.last("match")!.event).toBe("SET Y PARTIDO — ROJO");
+    expect(p1.last("match")!.event).toBe("SET & MATCH — ROJO");
     // Bots don't vote: two humans are needed, not four seats.
     expect(p1.last("vote")).toMatchObject({
       active: true,
@@ -163,7 +163,7 @@ describe("rematch vote", () => {
     room.requestResetVote("p2");
     expect(p1.last("vote")!.active).toBe(false);
     expect(p1.last("match")).toMatchObject({ phase: "serve", gamesA: 0, gamesB: 0, eventKind: "reset", winner: null, stats: null });
-    expect(p1.last("match")!.event).toBe("REINICIO");
+    expect(p1.last("match")!.event).toBe("RESET");
     room.stop();
   });
 

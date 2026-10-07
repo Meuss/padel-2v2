@@ -418,7 +418,7 @@
   display: none;
 }
 
-/* The Spanish score call: a thin strip under the bug, for 2.5 s after each point. */
+/* The score call: a thin strip under the bug, for 2.5 s after each point. */
 .sb-call {
   position: absolute;
   top: calc(100% + 2px);

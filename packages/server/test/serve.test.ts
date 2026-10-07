@@ -142,7 +142,7 @@ describe("aimed serve with a toss", () => {
     const steps = stepUntil(room, () => match().eventKind === "fault", 120);
     expect(steps).not.toBeNull();
     expect(steps! / TICK_RATE).toBeGreaterThanOrEqual(TOSS.expireS - 1 / TICK_RATE);
-    expect(match().reason).toBe("Missed the toss");
+    expect(match().reason).toBe("MISSED THE TOSS");
     expect(match().tossing).toBe(false);
     room.stop();
   });

@@ -64,7 +64,7 @@ export function bannerForMatch(m: MatchMsg, prev: MatchMsg | null): BannerItem |
   if (!prev || !m.eventKind || key === eventKey(prev)) return null;
   if (isGoldenPoint(m)) return { copy: goldenPointBanner(m.gamesA, m.gamesB), durationMs: BANNER_MS.golden };
   if (m.eventKind === "point") return null;
-  // The Rematch passed: the new match opens with PARTIDO, not REINICIO.
+  // The Rematch passed: the new match opens with MATCH, not RESET.
   if (m.eventKind === "reset" && prev.phase === "over" && m.phase !== "over") {
     return { copy: bannerFor("start", null, m.gamesA, m.gamesB, null)!, durationMs: BANNER_MS.start };
   }

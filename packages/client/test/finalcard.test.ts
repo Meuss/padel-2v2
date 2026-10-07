@@ -23,7 +23,7 @@ function msg(over: Partial<MatchMsg> = {}): MatchMsg {
     serveBox: null,
     awaitingServe: false,
     tossing: false,
-    event: "SET Y PARTIDO",
+    event: "SET & MATCH",
     eventKind: "set",
     eventTeam: "A",
     reason: null,

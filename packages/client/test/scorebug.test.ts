@@ -73,7 +73,7 @@ describe("bugModel", () => {
   it("calls the score, server's score first, on the transition where a point is won", () => {
     const prev = msg({ phase: "rally", serverSlot: "B1", pointA: "15", pointB: "15" });
     const next = msg({ phase: "between", serverSlot: "B1", pointA: "30", pointB: "15", eventKind: "point", eventTeam: "A" });
-    expect(bugModel(next, prev).call).toBe("QUINCE – TREINTA");
+    expect(bugModel(next, prev).call).toBe("FIFTEEN – THIRTY");
   });
 
   it("does not repeat the call on later messages of the same point", () => {
@@ -86,7 +86,7 @@ describe("bugModel", () => {
   it("calls the score for a double fault that hands over the point", () => {
     const prev = msg({ phase: "serve", pointA: "0", pointB: "0" });
     const next = msg({ phase: "between", pointA: "0", pointB: "15", eventKind: "fault", eventTeam: "B" });
-    expect(bugModel(next, prev).call).toBe("NADA – QUINCE");
+    expect(bugModel(next, prev).call).toBe("LOVE – FIFTEEN");
   });
 
   it("does not call a game, a first-serve fault or a reset", () => {
@@ -106,13 +106,13 @@ describe("bugModel", () => {
   it("calls 40-40 the golden point", () => {
     const prev = msg({ phase: "rally", pointA: "40", pointB: "30" });
     const next = msg({ phase: "between", pointA: "40", pointB: "40", eventKind: "point", eventTeam: "B" });
-    expect(bugModel(next, prev).call).toBe("PUNTO DE ORO");
+    expect(bugModel(next, prev).call).toBe("GOLDEN POINT");
   });
 
-  it("calls an equal score below 40 IGUALES", () => {
+  it("calls an equal score below 40 ALL", () => {
     const prev = msg({ phase: "rally", serverSlot: "B1", pointA: "0", pointB: "15" });
     const next = msg({ phase: "between", serverSlot: "B1", pointA: "15", pointB: "15", eventKind: "point", eventTeam: "A" });
-    expect(bugModel(next, prev).call).toBe("QUINCE IGUALES");
+    expect(bugModel(next, prev).call).toBe("FIFTEEN ALL");
   });
 
   it("flags the rally so the call strip hides", () => {
