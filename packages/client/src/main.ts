@@ -50,6 +50,7 @@ const loadingHint = document.getElementById("loading-hint")!;
 const reactbar = document.getElementById("reactbar")!;
 const reactionsEl = document.getElementById("reactions")!;
 const mutebtn = document.getElementById("mutebtn")!;
+const muteIcon = mutebtn.querySelector("span")!;
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -425,9 +426,9 @@ resetbtn.addEventListener("click", () => net.send({ t: "votereset" }));
 const MUTE_KEY = "mpc-muted";
 
 function renderMute(): void {
-  mutebtn.textContent = audio.muted ? "🔇" : "🔊";
-  mutebtn.title = audio.muted ? "Sound off (M to unmute)" : "Sound on (M to mute)";
-  mutebtn.setAttribute("aria-pressed", String(audio.muted));
+  muteIcon.textContent = audio.muted ? "🔇" : "🔊";
+  // The toggle is labelled "Sound": pressed means sound is on.
+  mutebtn.setAttribute("aria-pressed", String(!audio.muted));
 }
 
 function toggleMute(): void {
@@ -450,9 +451,10 @@ renderMute();
 for (const ev of ["pointerdown", "keydown"] as const) {
   window.addEventListener(ev, () => audio.unlock(), { capture: true });
 }
-mutebtn.addEventListener("click", () => {
+mutebtn.addEventListener("click", (e) => {
   toggleMute();
-  mutebtn.blur(); // keep Space for the serve toss
+  // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
+  if (e.detail > 0) mutebtn.blur();
 });
 showNickname();
 
@@ -501,7 +503,9 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
   else if (e.code === "KeyN" && role === "player") net.send({ t: "clearbots" });
-  else if (e.code === "KeyM" && !(e.target instanceof HTMLInputElement)) toggleMute();
+  else if (e.code === "KeyM" && !(e.ctrlKey || e.metaKey || e.altKey) && !(e.target instanceof HTMLInputElement)) {
+    toggleMute();
+  }
   else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
     reactbar.classList.toggle("open");
   }
