@@ -8,6 +8,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@padel/shared";
+import { MatchEngine } from "../src/match.js";
 import { Room } from "../src/room.js";
 import { fakeClient, sendInput, stepUntil } from "./fakes.js";
 
@@ -282,4 +283,49 @@ describe("aimed serve with a toss", () => {
     expect(matchesSince(watcher.messages(), 0).filter(isFault)).toEqual([]);
     room.stop();
   }, LONG_TEST_MS);
+});
+
+describe("a new server after a Fault", () => {
+  /** Ticks the engine (ball parked, no contacts) until `done`, from `now`; returns the time reached. */
+  function tickUntil(engine: MatchEngine, now: number, done: () => boolean): number {
+    for (let i = 0; i < 60 * 10 && !done(); i++) {
+      now += 1000 / TICK_RATE;
+      engine.tick(now, { x: 0, y: 1.2, z: 0 }, 0, []);
+    }
+    expect(done()).toBe(true);
+    return now;
+  }
+
+  it("starts on a first serve when the server leaves during the pause after a first-serve Fault", () => {
+    const engine = new MatchEngine();
+    engine.setRoster(
+      [
+        { slot: "A1", team: "A" },
+        { slot: "A2", team: "A" },
+        { slot: "B1", team: "B" },
+      ],
+      0,
+    );
+    expect(engine.toMessage().serverSlot).toBe("A1");
+    expect(engine.startToss("A1", 0)).toBe(true);
+    let now = tickUntil(engine, 0, () => engine.phase === "between");
+    expect(engine.toMessage().eventKind).toBe("fault"); // A1 missed the toss: first-serve Fault
+    // A1 leaves during the pause: A2 serves instead.
+    engine.setRoster(
+      [
+        { slot: "A2", team: "A" },
+        { slot: "B1", team: "B" },
+      ],
+      now,
+    );
+    now = tickUntil(engine, now, () => engine.phase === "serve");
+    expect(engine.toMessage().serverSlot).toBe("A2");
+    // A2's miss is its first Fault, not a double fault: no point to B.
+    expect(engine.startToss("A2", now)).toBe(true);
+    tickUntil(engine, now, () => engine.phase === "between");
+    const m = engine.toMessage();
+    expect(m.eventKind).toBe("fault");
+    expect(m.event).toBe("FAULT");
+    expect(m.pointB).toBe("0");
+  });
 });

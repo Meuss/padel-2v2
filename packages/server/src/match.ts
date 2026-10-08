@@ -675,6 +675,7 @@ export class MatchEngine {
     const rotation = this.serveRotation();
     if (!this.serverSlot || !this.players.some((p) => p.slot === this.serverSlot)) {
       this.serverSlot = rotation.length ? rotation[0]! : null;
+      attempt = 1; // a new server starts on a first serve, whatever the last one had used up
     }
     if (!this.serverSlot) {
       this.phase = "warmup";
