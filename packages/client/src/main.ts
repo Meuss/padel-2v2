@@ -9,16 +9,13 @@ import {
   PLAYER,
   isNotable,
   REACTIONS,
-  SERVICE_LINE_DIST,
   sanitizeName,
-  tossApex,
   type ContactEvent,
   type InputMsg,
   type MatchMsg,
   type MatchPhase,
   type Role,
   type ShotEvent,
-  type FaultHighlight,
   type Slot,
   type Team,
   type Vec2,
@@ -35,7 +32,8 @@ import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
-import { bannerFor, goldenPointBanner, servePrompt } from "./hud/copy.js";
+import { servePrompt } from "./hud/copy.js";
+import { AutoServe, devBannerItem, devFaultHighlight, devFinalMatch, startDevFault, type DevFault } from "./dev.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
@@ -126,7 +124,7 @@ let devFinal = false;
 /** Dev only (?vote=reset|rematch): a synthetic open vote, for the vote panel. */
 let devVote: VoteMsg["kind"] | null = null;
 /** Dev only (?fault=<kind>[&faultAt=<ms>]): a synthetic fault, looped, or held `faultAt` ms in. */
-let devFault: { highlight: FaultHighlight; freezeMs: number | null } | null = null;
+let devFault: DevFault | null = null;
 
 let match: MatchMsg | null = null;
 
@@ -467,7 +465,7 @@ let finalDueAt: number | null = null;
 
 /** The Final card for the current match state (a dev sample with ?finalCard=1), or null. */
 function currentFinal(): FinalModel | null {
-  if (import.meta.env.DEV && devFinal) return finalModel(devFinalMatch(), names);
+  if (import.meta.env.DEV && devFinal) return finalModel(devFinalMatch(selfTeam ?? "A"), names);
   // A dev fault (?fault=) is shot over whatever state the shared dev room is in.
   if (import.meta.env.DEV && devFault) return null;
   return match ? finalModel(match, names) : null;
@@ -683,7 +681,9 @@ const net = new Net({
     }
     renderVote();
     renderControls();
-    if (import.meta.env.DEV && devFault) startDevFault(devFault);
+    if (import.meta.env.DEV && devFault) {
+      startDevFault(devFault, { side: selfSide, team: () => selfTeam, play: (h, ms) => scene.devFault(h, ms) });
+    }
     if (msg.role === "player" && devBots > 0) {
       for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
       devBots = 0;
@@ -715,7 +715,7 @@ const net = new Net({
     renderServePrompt();
     renderBoards();
     onMatchEvent(msg);
-    if (import.meta.env.DEV && devAutoServe) autoServe();
+    if (import.meta.env.DEV && devAutoServe) autoServe?.onMatch(match);
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     // Not on the first update after a (re)connect: that point ended before we were watching.
     // A dev fault (?fault=) keeps the screen to itself.
@@ -736,7 +736,7 @@ const net = new Net({
   onSnapshot: (msg) => {
     interp.add(msg);
     recorder.add(msg);
-    if (import.meta.env.DEV) lastSnapshot = { serverTime: msg.serverTime, at: performance.now() };
+    if (import.meta.env.DEV) autoServe?.onSnapshot(msg.serverTime);
     events.schedule(msg.serverTime, msg.shots ?? [], msg.contacts ?? []);
     if (selfSlot) {
       const me = msg.players.find((p) => p.slot === selfSlot);
@@ -1036,6 +1036,39 @@ function playEvents(
 
 // ── Render / input loop ──────────────────────────────────────────────────────
 
+/** Send one input (the idle defaults under `extra`) and predict it locally. */
+function sendInput(move: Vec2, aim: Vec2, extra: Partial<InputMsg>): InputMsg {
+  const msg: InputMsg = {
+    t: "input",
+    seq: inputSeq++,
+    ts: performance.now(),
+    move,
+    aim,
+    shot: null,
+    view: interp.renderTime,
+    serve: false,
+    ...extra,
+  };
+  net.send(msg);
+  predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
+  return msg;
+}
+
+/** Dev only (?autoserve=1): serves by itself so `pnpm shoot` can show rallies. */
+const autoServe = import.meta.env.DEV
+  ? new AutoServe({
+      locked: selfLocked,
+      side: selfSide,
+      renderTime: () => interp.renderTime,
+      send: (extra) => {
+        // We are locked at the serve spot: no movement.
+        if (ownPos === null) return;
+        const msg = sendInput({ x: 0, z: 0 }, autoServe!.aimAtBoxCentre(ownPos), extra);
+        if (msg.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
+      },
+    })
+  : null;
+
 // Reused every frame, so the loop allocates no positions: each frame's avatar positions (for
 // the reactions), the slots in this snapshot, and one point per slot.
 const framePos = new Map<string, { x: number; z: number }>();
@@ -1068,7 +1101,7 @@ scene.start((dt) => {
     carryServe ||= i.serve;
     const aim =
       import.meta.env.DEV && devAutoServe && selfLocked() && ownPos !== null
-        ? serveAimAtBoxCentre(ownPos)
+        ? autoServe!.aimAtBoxCentre(ownPos)
         : ownPos !== null
         ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)
         : { x: 0, z: selfTeam === "A" ? 1 : -1 };
@@ -1076,20 +1109,9 @@ scene.start((dt) => {
     const { steps, accumulator } = fixedSteps(stepAccum, dt);
     stepAccum = accumulator;
     for (let k = 0; k < steps; k++) {
-      const msg: InputMsg = {
-        t: "input",
-        seq: inputSeq++,
-        ts: performance.now(),
-        move: i.move,
-        aim,
-        shot: carryShot,
-        view: interp.renderTime,
-        serve: carryServe,
-      };
+      sendInput(i.move, aim, { shot: carryShot, serve: carryServe });
       carryShot = null;
       carryServe = false;
-      net.send(msg);
-      predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
     }
     // During a replay our avatar shows recorded play: no live swing on it.
     if (i.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
@@ -1150,75 +1172,6 @@ scene.start((dt) => {
   tickBanner();
 });
 
-// ── Dev auto-serve (?autoserve=1) ────────────────────────────────────────────
-// Every call site is behind `import.meta.env.DEV`, so production builds drop all of this.
-// Timer-driven rather than per frame: headless SwiftShader renders at ~2 fps, slower than
-// the toss lasts, and its render clock drifts well behind the server's.
-
-const AUTOSERVE_DELAY_MS = 600;
-let autoServeState: "idle" | "tossing" | "striking" = "idle";
-let autoServeTimer: number | undefined;
-/** The newest snapshot's server time and when it arrived, to estimate the server clock. */
-let lastSnapshot: { serverTime: number; at: number } | null = null;
-
-/** Estimated server clock (ms) right now. */
-function serverClockNow(): number {
-  return lastSnapshot ? lastSnapshot.serverTime + (performance.now() - lastSnapshot.at) : interp.renderTime;
-}
-
-/**
- * On each match update: as the server awaiting the serve, toss AUTOSERVE_DELAY_MS later,
- * then strike a Drive at the toss apex. The toss started when we first see `tossing`, so
- * its apex is tossApex() later; the server judges the strike at our `view`, so a view of
- * that apex time is a perfect serve whenever the strike arrives within LAG.maxRewindMs.
- */
-function autoServe(): void {
-  if (!selfLocked() || !match?.awaitingServe) {
-    window.clearTimeout(autoServeTimer);
-    autoServeState = "idle";
-    return;
-  }
-  if (!match.tossing && autoServeState === "idle") {
-    autoServeState = "tossing";
-    autoServeTimer = window.setTimeout(() => sendDevInput({ serve: true }), AUTOSERVE_DELAY_MS);
-  } else if (match.tossing && autoServeState !== "striking") {
-    autoServeState = "striking";
-    window.clearTimeout(autoServeTimer);
-    const apexMs = tossApex() * 1000;
-    const apex = serverClockNow() + apexMs;
-    autoServeTimer = window.setTimeout(() => sendDevInput({ shot: "drive", view: apex }), apexMs);
-  }
-}
-
-/** Send one extra input outside the frame loop (we are locked at the serve spot, so no movement). */
-function sendDevInput(extra: Partial<InputMsg>): void {
-  if (ownPos === null) return;
-  const msg: InputMsg = {
-    t: "input",
-    seq: inputSeq++,
-    ts: performance.now(),
-    move: { x: 0, z: 0 },
-    aim: serveAimAtBoxCentre(ownPos),
-    shot: null,
-    view: interp.renderTime,
-    serve: false,
-    ...extra,
-  };
-  net.send(msg);
-  predictor.applyInput({ seq: msg.seq, move: msg.move }, selfSide(), selfLocked());
-  if (msg.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
-}
-
-/** Unit aim from the serve spot to the centre of the diagonal service box. */
-function serveAimAtBoxCentre(from: { x: number; z: number }): Vec2 {
-  const side = selfSide();
-  const target = { x: (-Math.sign(from.x) * COURT.width) / 4, z: (-side * SERVICE_LINE_DIST) / 2 };
-  const dx = target.x - from.x;
-  const dz = target.z - from.z;
-  const len = Math.hypot(dx, dz);
-  return { x: dx / len, z: dz / len };
-}
-
 // ── Name labels above avatars ────────────────────────────────────────────────
 
 function updateLabel(slot: Slot, x: number, z: number): void {
@@ -1250,109 +1203,5 @@ function removeLabel(slot: Slot): void {
   if (el) {
     el.remove();
     tags.delete(slot);
-  }
-}
-
-// ── Dev Banner (?banner=<kind>) ──────────────────────────────────────────────
-
-/** A sample Banner for a kind ("golden", "game", "set", "fault", "let", "start", "reset") or its title. */
-function devBannerItem(raw: string): BannerItem | null {
-  const k = raw.toLowerCase().replace(/[\s_-]+/g, "");
-  if (k === "golden" || k === "goldenpoint") return { copy: goldenPointBanner(5, 4), durationMs: Infinity };
-  const kinds = { game: "game", set: "set&match", fault: "fault", let: "let", start: "match", reset: "reset" } as const;
-  for (const [kind, title] of Object.entries(kinds) as [keyof typeof kinds, string][]) {
-    if (k !== kind && k !== title) continue;
-    const copy = bannerFor(kind, kind === "game" || kind === "set" ? "A" : null, 5, 4, kind === "fault" ? "Into the net" : null);
-    return copy ? { copy, durationMs: Infinity } : null;
-  }
-  return null;
-}
-
-// ── Dev Final card (?finalCard=1) ────────────────────────────────────────────
-
-/** A finished match with sample stats, won by our team (so a long nickname shows on the card). */
-function devFinalMatch(): MatchMsg {
-  const winner: Team = selfTeam ?? "A";
-  return {
-    t: "match",
-    phase: "over",
-    pointA: "0",
-    pointB: "0",
-    gamesA: winner === "A" ? 6 : 4,
-    gamesB: winner === "A" ? 4 : 6,
-    tiebreak: false,
-    sideA: -1,
-    serverSlot: null,
-    serveBox: null,
-    awaitingServe: false,
-    tossing: false,
-    event: "SET & MATCH",
-    eventKind: "set",
-    eventTeam: winner,
-    reason: null,
-    highlight: null,
-    winner,
-    stats: {
-      A: { shots: 132, perfect: 51, smashes: 9, points: 31 },
-      B: { shots: 118, perfect: 34, smashes: 5, points: 24 },
-      longestRally: 17,
-      durationS: 642,
-    },
-  };
-}
-
-// ── Dev fault animation (?fault=<kind>&faultAt=<ms>) ─────────────────────────
-
-let devFaultTimer: number | undefined;
-
-/** Play the synthetic fault once the players are on court: looped, or held at `freezeMs`. */
-function startDevFault(f: { highlight: FaultHighlight; freezeMs: number | null }): void {
-  if (devFaultTimer !== undefined) return;
-  // The samples sit in the z > 0 half: mirror them into the far half from our camera.
-  const play = () => {
-    const h = selfSide() === 1 ? mirrorFault(f.highlight) : { ...f.highlight };
-    if (h.slot) h.slot = selfTeam === "B" ? "A1" : "B1"; // an opponent, across the net
-    scene.devFault(h, f.freezeMs);
-  };
-  devFaultTimer = window.setTimeout(() => {
-    play();
-    if (f.freezeMs === null) devFaultTimer = window.setInterval(play, 2600);
-  }, 1500);
-}
-
-/** The same fault seen from the other end: z (and the box's half) flipped. */
-function mirrorFault(h: FaultHighlight): FaultHighlight {
-  const m: FaultHighlight = { ...h };
-  if (h.points) m.points = h.points.map((p) => ({ x: -p.x, y: p.y, z: -p.z }));
-  if (h.box) m.box = { xMin: -h.box.xMax, xMax: -h.box.xMin, zNear: h.box.zNear, zFar: h.box.zFar, side: h.box.side === 1 ? -1 : 1 };
-  return m;
-}
-
-/**
- * A sample fault at typical positions, mostly in the z > 0 half (the far half from the first
- * Player's camera): ground (double bounce), net, out, glass, mesh, player (double hit),
- * serve (long, with the target box) and serve-net.
- */
-function devFaultHighlight(kind: string): FaultHighlight | null {
-  const box = { xMin: -5, xMax: 0, zNear: 0, zFar: 6.95, side: 1 } as const;
-  switch (kind) {
-    case "ground":
-      return { kind: "ground", surface: "floor", points: [{ x: 1.4, y: 0.07, z: 4.6 }, { x: 2.6, y: 0.07, z: 7.4 }] };
-    case "net":
-      return { kind: "net", surface: "net", points: [{ x: -1.3, y: 0.74, z: 0.1 }] };
-    case "out":
-      return { kind: "out", points: [{ x: 1.6, y: 4.15, z: 10.08 }, { x: 1.1, y: 0.07, z: 7.2 }] };
-    case "glass":
-      return { kind: "wall", surface: "glass", points: [{ x: -1.6, y: 1.5, z: 9.93 }] };
-    case "mesh":
-      return { kind: "wall", surface: "mesh", points: [{ x: 4.93, y: 1.6, z: 2.6 }] };
-    case "player":
-      return { kind: "player", slot: "B1", points: [{ x: -2.5, y: 0, z: 5 }] };
-    case "serve":
-      return { kind: "out", surface: "floor", points: [{ x: -2.2, y: 0.07, z: 7.9 }], box };
-    case "serve-net":
-      return { kind: "net", surface: "net", points: [{ x: -2, y: 0.82, z: 0.1 }], box };
-    default:
-      return null;
   }
 }
