@@ -35,6 +35,8 @@ import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/bann
 import { servePrompt } from "./hud/copy.js";
 import { AutoServe, devBannerItem, devFaultHighlight, devFinalMatch, startDevFault, type DevFault } from "./dev.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
+import { VotePanel, votePanelView } from "./hud/votepanel.js";
+import { blurAfterClick } from "./hud/button.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
@@ -66,7 +68,6 @@ const banner = new Banner(document.getElementById("banner")!, bannerQueue);
 const servePromptEl = document.getElementById("serveprompt")!;
 const labels = document.getElementById("labels")!;
 const resetbtn = document.getElementById("resetbtn")!;
-const votepanel = document.getElementById("votepanel")!;
 const joinScreen = document.getElementById("join")!;
 const joinForm = document.getElementById("join-form") as HTMLFormElement;
 const nickInput = document.getElementById("nick-input") as HTMLInputElement;
@@ -81,6 +82,7 @@ const reactionsEl = document.getElementById("reactions")!;
 const mutebtn = document.getElementById("mutebtn")!;
 const replayTag = document.getElementById("replaytag")!;
 const finalCard = new FinalCard(document.getElementById("finalcard")!, { accept: acceptVote, decline: declineVote });
+const votePanel = new VotePanel(document.getElementById("votepanel")!, { accept: acceptVote, decline: declineVote });
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -360,8 +362,6 @@ function renderTags(phase: MatchPhase | null): void {
 let vote: VoteMsg | null = null;
 /** We accepted the open vote (or started it): the Accept button settles. */
 let acceptedVote = false;
-/** What the vote panel shows now, or null while hidden. */
-let votePanelKey: string | null = null;
 
 function onVote(msg: VoteMsg): void {
   // A closed vote, or a new kind (the Rematch replaces a reset vote): our answer is spent.
@@ -406,54 +406,8 @@ function renderVote(): void {
     acceptedByMe: acceptedVote,
   });
   const finalPhase = finalCard.showing || finalDueAt !== null || match?.phase === "over";
-  if (!v || !active || role !== "player" || finalPhase || match?.phase === "rally") {
-    votepanel.classList.remove("show");
-    votePanelKey = null;
-    return;
-  }
-  // Rebuilt only when it changes, so a focused button keeps its focus across match updates.
-  const key = `${v.kind}|${v.initiator}|${v.accepted}/${v.needed}|${acceptedVote}`;
-  if (key === votePanelKey) return;
-  votePanelKey = key;
-  const rule = document.createElement("div");
-  rule.className = "vt-rule";
-  const title = document.createElement("div");
-  title.className = "vt-title";
-  title.textContent = v.kind === "rematch" ? "REMATCH?" : "RESET THE SET?";
-  // The initiator's nickname is user input: textContent only.
-  const who = document.createElement("span");
-  who.className = "vt-who";
-  who.textContent = v.initiator;
-  const n = document.createElement("b");
-  n.textContent = `${v.accepted}/${v.needed}`;
-  const count = document.createElement("span");
-  count.className = "vt-count";
-  count.append(n, " accepted");
-  const sub = document.createElement("div");
-  sub.className = "vt-sub";
-  sub.append(who, count);
-  const accept = document.createElement("button");
-  accept.type = "button";
-  accept.className = "primary-btn";
-  accept.textContent = acceptedVote ? "Accepted" : "Accept";
-  accept.disabled = acceptedVote;
-  accept.addEventListener("click", acceptVote);
-  const decline = document.createElement("button");
-  decline.type = "button";
-  decline.className = "ghost-btn";
-  decline.textContent = "Decline";
-  decline.addEventListener("click", declineVote);
-  for (const b of [accept, decline]) {
-    // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
-    b.addEventListener("click", (e) => {
-      if (e.detail > 0) b.blur();
-    });
-  }
-  const actions = document.createElement("div");
-  actions.className = "vt-actions";
-  actions.append(accept, decline);
-  votepanel.replaceChildren(rule, title, sub, actions);
-  votepanel.classList.add("show");
+  const at = { player: role === "player", finalPhase, rally: match?.phase === "rally" };
+  votePanel.render(votePanelView(v, at, acceptedVote));
 }
 
 // ── Final card ───────────────────────────────────────────────────────────────
@@ -798,11 +752,8 @@ joinForm.addEventListener("submit", (e) => {
   play();
 });
 nickInput.addEventListener("input", onNickInput);
-resetbtn.addEventListener("click", (e) => {
-  acceptVote();
-  // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
-  if (e.detail > 0) resetbtn.blur();
-});
+resetbtn.addEventListener("click", acceptVote);
+blurAfterClick(resetbtn);
 
 // ── Sound: unlocked by the first gesture, M or the HUD button toggles mute ───
 
@@ -833,11 +784,8 @@ renderMute();
 for (const ev of ["pointerdown", "keydown"] as const) {
   window.addEventListener(ev, () => audio.unlock(), { capture: true });
 }
-mutebtn.addEventListener("click", (e) => {
-  toggleMute();
-  // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
-  if (e.detail > 0) mutebtn.blur();
-});
+mutebtn.addEventListener("click", toggleMute);
+blurAfterClick(mutebtn);
 showNickname();
 
 // Dev-only: ?join=<name>&bots=<n> skips the nickname card (used by `pnpm shoot`).

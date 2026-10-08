@@ -6,6 +6,7 @@
  */
 import type { MatchMsg, MatchStats, Slot, Team } from "@padel/shared";
 import { teamLabel } from "./copy.js";
+import { button } from "./button.js";
 
 export interface FinalRow {
   label: string;
@@ -106,8 +107,8 @@ export class FinalCard {
   private readonly statsBody = el("tbody", "");
   private readonly countEl = el("div", "fc-count");
   private readonly countN = el("span", "fc-count-n");
-  private readonly accept = el("button", "primary-btn", "Accept");
-  private readonly decline = el("button", "ghost-btn", "Decline");
+  private readonly accept: HTMLButtonElement;
+  private readonly decline: HTMLButtonElement;
   private readonly actions = el("div", "fc-actions");
   private readonly wait = el("div", "fc-wait", "Waiting for the players…");
   private shown = false;
@@ -142,15 +143,8 @@ export class FinalCard {
     thead.append(headRow);
     table.append(thead, this.statsBody);
 
-    for (const b of [this.accept, this.decline]) {
-      b.type = "button";
-      // After a mouse click, give Space back to the game; keyboard users keep focus.
-      b.addEventListener("click", (e) => {
-        if (e.detail > 0) b.blur();
-      });
-    }
-    this.accept.addEventListener("click", handlers.accept);
-    this.decline.addEventListener("click", handlers.decline);
+    this.accept = button("primary-btn", "Accept", handlers.accept);
+    this.decline = button("ghost-btn", "Decline", handlers.decline);
     this.actions.append(this.accept, this.decline);
     this.countEl.append(this.countN, el("span", "fc-count-label", "accepted"));
     const foot = el("div", "fc-foot");
