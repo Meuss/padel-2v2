@@ -9,8 +9,8 @@ describe("playerCamPose", () => {
     expect(p.pos.y).toBeGreaterThanOrEqual(6);
     expect(p.pos.y).toBeLessThanOrEqual(10);
     expect(p.look.z).toBeGreaterThan(-6);
-    expect(p.fov).toBeGreaterThanOrEqual(30);
-    expect(p.fov).toBeLessThanOrEqual(38);
+    expect(p.fov).toBeGreaterThanOrEqual(24);
+    expect(p.fov).toBeLessThanOrEqual(34);
   });
 
   it("mirrors for side +1", () => {

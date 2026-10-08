@@ -188,13 +188,6 @@
   color: rgba(244, 247, 255, 0.72);
 }
 
-#resetbtn {
-  display: none;
-}
-#resetbtn.show {
-  display: inline-block;
-}
-
 /** Spectators only, while a seat is free: bottom-right, where the vote panel sits for Players. */
 #takeseat {
   position: fixed;
@@ -1309,6 +1302,12 @@ body.final-up #labels {
   font-size: clamp(13px, 2vh, 28px);
   font-weight: 600;
   letter-spacing: 0.06em;
+}
+/* Reset the set: a quiet ghost button before "Got it", pushed right with it. */
+.ct-foot .ct-reset {
+  margin-left: auto;
+  padding: 0.6em 1.2em;
+  font-size: clamp(13px, 2vh, 28px);
 }
 .ct-foot .primary-btn {
   padding: 0.6em 1.8em;

@@ -129,9 +129,15 @@ function figure(row: ControlRow, className: string): HTMLDivElement {
   return fig;
 }
 
+/** Players find the Reset-the-set vote in the controls card, off the rally frame; spectators have no vote. Pure. */
+export function cardOffersReset(role: Role): boolean {
+  return role === "player";
+}
+
 /**
  * The controls card: a centred broadcast card (white CONTROLS strip, MOVE and HIT columns, the
- * other keys, then "Got it"). Drawn per role; `onClose` runs when it is dismissed by the button.
+ * other keys, then "Got it"). Drawn per role; `onGotIt` runs when it is dismissed by the button,
+ * and `onReset` when a Player asks to reset the set from its foot.
  */
 export class ControlsCard {
   private role: Role | null = null;
@@ -140,6 +146,7 @@ export class ControlsCard {
   constructor(
     private readonly root: HTMLElement,
     private readonly onGotIt: () => void,
+    private readonly onReset: () => void,
   ) {
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Controls");
@@ -218,7 +225,20 @@ export class ControlsCard {
       if (e.detail > 0) gotIt.blur();
     });
     const foot = div("ct-foot");
-    foot.append(again, gotIt);
+    foot.append(again);
+    if (cardOffersReset(role)) {
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "ghost-btn ct-reset";
+      reset.textContent = "Reset the set";
+      reset.title = "Propose resetting the set (all players must accept)";
+      reset.addEventListener("click", (e) => {
+        this.onReset();
+        if (e.detail > 0) reset.blur();
+      });
+      foot.append(reset);
+    }
+    foot.append(gotIt);
     parts.push(foot);
 
     this.root.replaceChildren(...parts);

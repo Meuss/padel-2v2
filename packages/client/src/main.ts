@@ -56,7 +56,6 @@ scoreBug.render(bugModel(null, null));
 const bannerQueue = new BannerQueue();
 const banner = new Banner(document.getElementById("banner")!, bannerQueue);
 const servePromptEl = document.getElementById("serveprompt")!;
-const resetbtn = document.getElementById("resetbtn")!;
 const joinScreen = document.getElementById("join")!;
 const joinForm = document.getElementById("join-form") as HTMLFormElement;
 const nickInput = document.getElementById("nick-input") as HTMLInputElement;
@@ -165,7 +164,11 @@ try {
 } catch {
   // storage blocked (private mode): the card shows on each visit
 }
-const controlsCard = new ControlsCard(document.getElementById("controls")!, closeControls);
+// The card's "Reset the set" starts the vote and steps aside so the vote panel shows.
+const controlsCard = new ControlsCard(document.getElementById("controls")!, closeControls, () => {
+  closeControls();
+  acceptVote();
+});
 const ctlLegend = document.getElementById("ctl-legend")!;
 const controlsLegend = new ControlsLegend(ctlLegend, toggleControls);
 /** The match phase last seen while the card is up: a serve → rally step is a serve going in. */
@@ -560,14 +563,12 @@ const net = new Net({
       scene.setSelfMarker(msg.slot);
       input?.dispose();
       input = new Input(scene.domElement);
-      resetbtn.classList.add("show");
     } else {
       input?.dispose();
       input = null;
       selfSlot = null;
       scene.setSpectatorCamera();
       scene.setSelfMarker(null);
-      resetbtn.classList.remove("show");
     }
     renderVote();
     renderControls();
@@ -647,7 +648,6 @@ function showNickname(message = ""): void {
   renderRoom(null);
   showRoomCounts();
   openJoin("form");
-  resetbtn.classList.remove("show");
   controlsCard.hide();
   controlsPending = false;
   controlsLegend.setExpanded(false);
@@ -687,8 +687,6 @@ joinForm.addEventListener("submit", (e) => {
   play();
 });
 nickInput.addEventListener("input", onNickInput);
-resetbtn.addEventListener("click", acceptVote);
-blurAfterClick(resetbtn);
 
 // ── Sound: unlocked by the first gesture, M or the HUD button toggles mute ───
 

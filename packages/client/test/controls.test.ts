@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { controlRows, escapeCloses, legendRows, persistSeenOnClose, shouldShowCard } from "../src/hud/controls.js";
+import { cardOffersReset, controlRows, escapeCloses, legendRows, persistSeenOnClose, shouldShowCard } from "../src/hud/controls.js";
 
 const keysOf = (rows: { keys: string[] }[]) => rows.map((r) => r.keys.join("+"));
 
@@ -75,5 +75,12 @@ describe("escapeCloses", () => {
     expect(escapeCloses({ controlsCard: true, tray: true })).toBe("controls");
     expect(escapeCloses({ controlsCard: false, tray: true })).toBe("tray");
     expect(escapeCloses({ controlsCard: false, tray: false })).toBeNull();
+  });
+});
+
+describe("cardOffersReset", () => {
+  it("puts the Reset-the-set vote in the Players' card only", () => {
+    expect(cardOffersReset("player")).toBe(true);
+    expect(cardOffersReset("spectator")).toBe(false);
   });
 });

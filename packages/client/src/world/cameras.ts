@@ -14,27 +14,29 @@ const DEEP_FROM = 6;
 const DEEP_FULL = 9.5;
 
 /** Player cam: long-lens broadcast framing behind the player's own end. Pure.
- *  `side` is the sign of the z half the player defends (-1: z<0). */
+ *  `side` is the sign of the z half the player defends (-1: z<0). It sits just behind the end
+ *  stand's back row and as low as the crowd allows (6 m): the bottom of the frame clears the
+ *  heads in front of it, and the narrow lens puts the net near the middle of the frame. */
 export function playerCamPose(
   player: { x: number; z: number },
   ball: { x: number; z: number } | null,
   side: -1 | 1,
 ): CamPose {
-  const pos = new THREE.Vector3(clamp(player.x * 0.35, -3, 3), 7, side * 17);
+  const pos = new THREE.Vector3(clamp(player.x * 0.35, -3, 3), 6, side * 18);
   // How deep the play is on the player's own half: 0 up to 6 m from the net, 1 at the back glass.
   const depth = Math.max(side * player.z, ball ? side * ball.z : -Infinity);
   const deep = clamp((depth - DEEP_FROM) / (DEEP_FULL - DEEP_FROM), 0, 1);
-  // Work in the player's frame (u grows toward the net). Aim 2 m behind the net on the
-  // player's half so the near pair sits low in frame; the ball pulls the look point
-  // toward the far end, but never beyond 4 m past the net.
-  let u = -2;
+  // Work in the player's frame (u grows toward the net). Aim 1 m behind the net on the
+  // player's half so the net sits near the middle of the frame and the near pair low in it;
+  // the ball pulls the look point toward the far end, but never beyond 4 m past the net.
+  let u = -1;
   if (ball) u += (-side * ball.z - u) * 0.25;
   // Deep play (player or ball within ~4 m of the own back glass) would put feet and
   // back-glass rebounds below the frame: cancel the far-end pull, tilt the look point
   // back and widen the lens a little.
-  u = Math.min(4 - 6 * deep, u) - 3.5 * deep;
+  u = Math.min(4 - 6 * deep, u) - 1.5 * deep;
   const look = new THREE.Vector3(player.x * 0.2, 0.8, -side * u);
-  return { pos, look, fov: 30 + 6 * deep };
+  return { pos, look, fov: 28 + 6 * deep };
 }
 
 /** Broadcast cam for spectators: elevated, behind the z<0 end, gently tracking the ball. Pure. */
