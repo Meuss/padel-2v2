@@ -105,3 +105,15 @@ describe("truncateName", () => {
     expect(truncateName("👨‍👩‍👧‍👦".repeat(16))).toBe("👨‍👩‍👧‍👦".repeat(13) + "…");
   });
 });
+
+describe("finalModel short names", () => {
+  it("shows a winning Bot by its surname, cut to the card's length like the name tags", () => {
+    const names = new Map([
+      ["A1", { name: "Shooter", team: "A" as const, isBot: false }],
+      ["A2", { name: "Bot Fribourg-Gottéron", team: "A" as const, isBot: true }],
+    ] as const);
+    expect(finalModel(msg(), new Map(names))!.names).toEqual(["Shooter", "FRIBOURG-GOTT…"]);
+    const stan = new Map([["A1", { name: "Bot Stan Wawrinka", team: "A" as const, isBot: true }]] as const);
+    expect(finalModel(msg(), new Map(stan))!.names).toEqual(["WAWRINKA"]);
+  });
+});

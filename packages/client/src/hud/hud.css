@@ -867,10 +867,12 @@ body.final-up #votepanel {
 #finalcard[data-team="rojo"] {
   --fc-team: var(--rojo);
 }
+/* The winner's colour runs along the top rule, as on the Banner. */
 .fc-head {
   display: grid;
   place-items: center;
   height: 4.6vh;
+  border-top: max(3px, 0.6vh) solid var(--fc-team);
   padding-top: 0.08em;
   background: var(--bug-white);
   color: var(--bug-ink);
@@ -885,15 +887,6 @@ body.final-up #votepanel {
   gap: 1.2vh;
   padding: 2.8vh 2vw 2.6vh;
   background: linear-gradient(180deg, #172649 0%, var(--bug-navy) 100%);
-}
-/* The winner's colour down the left edge. */
-.fc-block {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 0.6vw;
-  background: var(--fc-team);
 }
 .fc-winner {
   color: var(--fc-team);

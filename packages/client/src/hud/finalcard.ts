@@ -5,7 +5,7 @@
  * finalModel is pure (unit tested); FinalCard only draws a model and the vote.
  */
 import type { MatchMsg, MatchStats, Slot, Team } from "@padel/shared";
-import { teamLabel } from "./copy.js";
+import { shortName, teamLabel } from "./copy.js";
 import { button } from "./button.js";
 
 export interface FinalRow {
@@ -53,7 +53,7 @@ function winnerOf(m: MatchMsg, stats: MatchStats): Team {
 const SLOT_ORDER: Slot[] = ["A1", "A2", "B1", "B2"];
 
 /** The Final card for a match state, or null unless the match is over with its stats. Pure. */
-export function finalModel(m: MatchMsg, names: Map<Slot, { name: string; team: Team }>): FinalModel | null {
+export function finalModel(m: MatchMsg, names: Map<Slot, { name: string; team: Team; isBot?: boolean }>): FinalModel | null {
   const stats = m.stats;
   if (m.phase !== "over" || !stats) return null;
   const winner = winnerOf(m, stats);
@@ -62,7 +62,8 @@ export function finalModel(m: MatchMsg, names: Map<Slot, { name: string; team: T
   const winners: string[] = [];
   for (const slot of SLOT_ORDER) {
     const p = names.get(slot);
-    if (p && p.team === winner) winners.push(truncateName(p.name));
+    // The same short name as the name tags (a Bot's surname), cut to the card's own length.
+    if (p && p.team === winner) winners.push(truncateName(shortName(p.name, p.isBot ?? false)));
   }
   const rally = String(stats.longestRally);
   return {
@@ -121,12 +122,11 @@ export class FinalCard {
     root.setAttribute("aria-label", "Final");
 
     const head = el("div", "fc-head", "SET & MATCH");
-    const block = el("div", "fc-block");
     const score = el("div", "fc-score");
     score.append(this.scoreWon, el("span", "fc-dash", DASH), this.scoreLost);
     const top = el("div", "fc-top");
     this.winnerEl.setAttribute("aria-live", "polite");
-    top.append(block, this.winnerEl, score, this.namesEl);
+    top.append(this.winnerEl, score, this.namesEl);
 
     const table = el("table", "fc-stats");
     const headRow = el("tr", "");
