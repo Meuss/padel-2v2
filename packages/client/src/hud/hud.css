@@ -15,6 +15,8 @@
   --optic: #e4f23a;
 
   --font-broadcast: "Barlow Condensed", "Arial Narrow", sans-serif;
+  /* The comp's broadcast lettering (score bug header and names, Banner): wider caps, no tracking. */
+  --font-graphic: "Barlow Semi Condensed", var(--font-broadcast);
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* Condensed type scale, 1280×720 → 2560×1440. */
@@ -257,16 +259,17 @@
   background: linear-gradient(180deg, #14234a 0%, var(--bug-navy) 100%);
   border-bottom: var(--sb-rule-w) solid var(--sb-rule);
   color: var(--bug-white);
-  font-size: clamp(15px, 1.4vw, 36px);
+  font-family: var(--font-graphic);
+  font-size: clamp(14px, 1.22vw, 32px);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
 }
 .sb-tb {
   padding: 0.12em 0.4em;
   background: var(--bug-white);
   color: var(--bug-ink);
   font-size: 0.72em;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
 }
 
 .sb-row {
@@ -275,7 +278,7 @@
   height: var(--sb-row-h);
   min-height: 28px;
   background: linear-gradient(180deg, #172649 0%, var(--bug-navy) 100%);
-  font-size: clamp(16px, 2.6vh, 40px);
+  font-size: clamp(17px, 2.9vh, 44px);
   font-weight: 700;
 }
 /* One rule between the rows, across the whole row including the points cell. */
@@ -311,7 +314,8 @@
   gap: 0.35em;
   min-width: 0;
   color: var(--bug-white);
-  letter-spacing: 0.03em;
+  font-family: var(--font-graphic);
+  letter-spacing: 0.01em;
 }
 .sb-label {
   padding-top: 0.06em;
@@ -520,20 +524,22 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Barlow Condensed caps are 0.7em tall: 9.3vh gives the comp's 6.5vh caps; the tracking its width. */
+/* Barlow Semi Condensed caps are 0.7em tall: 9.3vh gives the comp's 6.5vh caps, and its own width. */
 .bn-title {
   padding-bottom: 0.08em;
+  font-family: var(--font-graphic);
   font-size: 9.3vh;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.01em;
 }
 .bn-sub {
   height: 6.5vh;
   padding-top: 0.08em;
   border-top: 1px solid rgba(244, 247, 255, 0.26);
+  font-family: var(--font-graphic);
   font-size: 4.8vh;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 .bn-sub[hidden] {
   display: none;

@@ -320,13 +320,15 @@ function updateBanner(m: MatchMsg, prev: MatchMsg | null): void {
   const now = performance.now();
   const item = bannerForMatch(m, prev);
   if (item) bannerQueue.show(item, now);
-  // Dev only (?banner=<kind>): hold a Banner on screen, rallies included, for screenshots.
-  if (import.meta.env.DEV && dev?.banner && !bannerQueue.current(now)) bannerQueue.show(dev.banner, now);
 }
 
 /** Once per frame: draw the Banner, and step the bug and serve prompt aside while it is up. */
 function tickBanner(): void {
-  banner.update(performance.now());
+  const now = performance.now();
+  // Dev only (?banner=<kind>): hold a Banner on screen, rallies included, for screenshots. Checked
+  // every frame, so it comes back after a real Banner (such as MATCH when the bots join) ends.
+  if (import.meta.env.DEV && dev?.banner && !bannerQueue.current(now)) bannerQueue.show(dev.banner, now);
+  banner.update(now);
   document.body.classList.toggle("banner-up", banner.showing);
 }
 
