@@ -24,6 +24,15 @@ export function timeToClosest(rel: Vec3, vel: Vec3): number {
   return -(rel.x * vel.x + rel.y * vel.y + rel.z * vel.z) / vv;
 }
 
+/**
+ * How badly a swing is mistimed, from its time to closest: 0 inside the perfect window, rising
+ * linearly to 1 two windows beyond it (|tClosest| = 3·SHOT.perfectWindowS). Pure.
+ */
+export function offTimingSeverity(tClosest: number): number {
+  const w = SHOT.perfectWindowS;
+  return clamp((Math.abs(tClosest) - w) / (2 * w), 0, 1);
+}
+
 /** Timing from time-to-closest: still approaching beyond the window is early, already past is late. */
 export function judgeTiming(tClosest: number): Timing {
   if (Math.abs(tClosest) <= SHOT.perfectWindowS) return "perfect";
@@ -104,9 +113,12 @@ export function lobPower(contactY: number, distToNet: number, aim: Vec2, depthPa
  * Ball velocity for a shot. `aim` is a unit world-space XZ direction. Off-timing rotates the aim
  * around +Y by aimErrorDeg. Sign convention: with x' = x·cos a - z·sin a, early uses
  * a = +aimErrorDeg (aim +z drifts to x < 0) and late uses a = -aimErrorDeg (x > 0).
+ * An off-timed Drive or Smash scales its power and lift by 1 - (1 - factor)·severity
+ * (`severity` from offTimingSeverity, 1 by default: the full SHOT.offTiming factors).
  * With a `contact` on the hitter's side:
- * - a Drive gets at least the lift to clear the net at the table power (before off-timing scales
- *   power and lift, so a mistimed Drive can still find the net);
+ * - a Drive gets at least the lift to clear the net at its (off-timed) power, by a margin of
+ *   SHOT.netClearance - 0.6·severity: a slightly mistimed Drive still clears, a badly mistimed
+ *   one can find the net;
  * - a Lob's power is solved to land SHOT.lobDepthPastNet past the net, minus (early) or plus
  *   (late) SHOT.offTiming.lobDepthErrorM, with the table lift (raised to clear the net if needed);
  * - a Smash's lift is raised, if needed, to pass SHOT.smashNetMargin above the tape.
@@ -117,6 +129,7 @@ export function shotVelocity(
   timing: Timing,
   aim: Vec2,
   contact?: ShotContact,
+  severity = 1,
 ): Vec3 {
   const base = SHOT[kind];
   const off = timing !== "perfect";
@@ -135,12 +148,12 @@ export function shotVelocity(
     power = lobPower(contact.y, contact.distToNet, dir, depth);
     lift = Math.max(lift, clearanceLift(contact.y, contact.distToNet, towardNet(dir) * power));
   } else {
+    const sev = off ? severity : 0;
+    power *= 1 - (1 - SHOT.offTiming.power) * sev;
+    lift *= 1 - (1 - SHOT.offTiming.lift) * sev;
     if (kind === "drive" && hasContact) {
-      lift = Math.max(lift, clearanceLift(contact.y, contact.distToNet, towardNet(aim) * power));
-    }
-    if (off) {
-      power *= SHOT.offTiming.power;
-      lift *= SHOT.offTiming.lift;
+      const margin = SHOT.netClearance - 0.6 * sev;
+      lift = Math.max(lift, clearanceLift(contact.y, contact.distToNet, towardNet(dir) * power, margin));
     }
     if (kind === "smash" && hasContact) {
       const floor = clearanceLift(contact.y, contact.distToNet, towardNet(dir) * power, SHOT.smashNetMargin);

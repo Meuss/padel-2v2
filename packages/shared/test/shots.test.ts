@@ -8,6 +8,7 @@ import {
   serveTarget,
   serveTiming,
   clearanceLift,
+  offTimingSeverity,
   shotVelocity,
   timeToClosest,
   tossApex,
@@ -202,10 +203,33 @@ describe("net clearance", () => {
     expect(heightAt(0.4, v, 9)).toBeGreaterThan(COURT.netHeight + SHOT.netClearance - 1e-6);
   });
 
-  it("an early Drive from the same spot gets 0.9x that lift", () => {
-    const perfect = shotVelocity("drive", "perfect", aim, { y: 0.4, distToNet: 9 });
-    const early = shotVelocity("drive", "early", aim, { y: 0.4, distToNet: 9 });
-    expect(early.y).toBeCloseTo(perfect.y * SHOT.offTiming.lift);
+  it("a perfect Drive ignores the severity", () => {
+    const contact = { y: 0.4, distToNet: 9 };
+    expect(shotVelocity("drive", "perfect", aim, contact, 0.8)).toEqual(shotVelocity("drive", "perfect", aim, contact));
+  });
+
+  it("off-timing scales power before the clearance solve, by severity, and lowers the margin", () => {
+    const contact = { y: 0.4, distToNet: 9 };
+    for (const sev of [0, 0.25, 0.5, 1]) {
+      const v = shotVelocity("drive", "late", aim, contact, sev);
+      const power = SHOT.drive.power * (1 - (1 - SHOT.offTiming.power) * sev);
+      expect(Math.hypot(v.x, v.z)).toBeCloseTo(power);
+      // The lift is solved for the slower ball it now is, against a margin lowered by 0.6 m at full severity.
+      const towardNet = Math.abs(v.z);
+      expect(v.y).toBeCloseTo(clearanceLift(contact.y, contact.distToNet, towardNet, SHOT.netClearance - 0.6 * sev));
+    }
+  });
+
+  it("a slightly late back-court Drive still clears the net; a badly late one can find it", () => {
+    const contact = { y: 0.25, distToNet: 9.5 };
+    const atNet = (sev: number) => {
+      const v = shotVelocity("drive", "late", aim, contact, sev);
+      // Drag acts per axis, so the speed along z alone sets when the rotated shot reaches the net plane.
+      return heightExact(contact.y, { y: v.y, z: v.z }, contact.distToNet);
+    };
+    expect(atNet(0)).toBeGreaterThan(COURT.netHeight + SHOT.netClearance - 1e-6);
+    expect(atNet(0.25)).toBeGreaterThan(COURT.netHeight + 0.2);
+    expect(atNet(1)).toBeLessThan(COURT.netHeight);
   });
 
   it("from 1.2 m, 3 m back, the table lift is already enough", () => {
@@ -292,5 +316,20 @@ describe("distance-aware Lob", () => {
   it("lobPower clamps to [minPower, maxPower]", () => {
     expect(lobPower(3, 0.1, aim, 0)).toBe(SHOT.lob.minPower);
     expect(lobPower(0.1, 10, { x: 1, z: 0 }, 10)).toBe(SHOT.lob.maxPower);
+  });
+});
+
+describe("offTimingSeverity", () => {
+  const W = SHOT.perfectWindowS;
+  it("is 0 inside the perfect window and at its edge", () => {
+    expect(offTimingSeverity(0)).toBe(0);
+    expect(offTimingSeverity(W)).toBe(0);
+    expect(offTimingSeverity(-W)).toBe(0);
+  });
+  it("grows linearly to 1 at three windows out, early or late, and stays there", () => {
+    expect(offTimingSeverity(2 * W)).toBeCloseTo(0.5);
+    expect(offTimingSeverity(-2 * W)).toBeCloseTo(0.5);
+    expect(offTimingSeverity(3 * W)).toBeCloseTo(1);
+    expect(offTimingSeverity(-10 * W)).toBe(1);
   });
 });

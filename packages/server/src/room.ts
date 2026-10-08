@@ -25,6 +25,7 @@ import {
   isNotable,
   replayLengthMs,
   judgeTiming,
+  offTimingSeverity,
   resolveKind,
   shotVelocity,
   stepPlayer,
@@ -871,9 +872,11 @@ export class Room {
       const distToNet = ownSide ? Math.abs(seen.pos.z) : 0;
       const kind = resolveKind(requested, seen.pos.y, distToNet);
       const rel = { x: seen.pos.x - racket.x, y: seen.pos.y - racket.y, z: seen.pos.z - racket.z };
-      const timing = judgeTiming(timeToClosest(rel, seen.vel));
+      const tClosest = timeToClosest(rel, seen.vel);
+      const timing = judgeTiming(tClosest);
       const contact = ownSide ? { y: seen.pos.y, distToNet } : undefined;
-      const v = shotVelocity(kind, timing, this.shotAim(ps), contact);
+      // Humans and bots alike: how far off the timing is sets how much it costs.
+      const v = shotVelocity(kind, timing, this.shotAim(ps), contact, offTimingSeverity(tClosest));
       this.physics.setBallVelocity(v.x, v.y, v.z);
       this.hitSeq++;
       if (inRally) this.lastHitTeam = ps.team;

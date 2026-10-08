@@ -53,8 +53,9 @@ async function botMatch(seed: number, seconds: number) {
 }
 
 describe("bots use every shot with imperfect timing", () => {
-  it("a 2-minute bot match has Drives, Lobs and every Timing, with rallies won by both teams", async () => {
-    const { shots, points } = await botMatch(1, 120);
+  it("a 5-minute bot match has Drives, Lobs and every Timing, with rallies won by both teams", async () => {
+    // Rallies run long (and notable points wait for their replay): five minutes see both teams score.
+    const { shots, points } = await botMatch(1, 300);
     const kinds = new Set(shots.map((s) => s.kind));
     const timings = new Set(shots.filter((s) => s.kind !== "serve").map((s) => s.timing));
     expect(kinds).toContain("drive");
