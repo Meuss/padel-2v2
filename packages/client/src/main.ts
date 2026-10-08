@@ -35,7 +35,7 @@ import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
-import { bannerFor, goldenPointBanner } from "./hud/copy.js";
+import { bannerFor, goldenPointBanner, servePrompt } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
@@ -65,7 +65,7 @@ const scoreBug = new ScoreBug(document.getElementById("scorebug")!);
 scoreBug.render(bugModel(null, null));
 const bannerQueue = new BannerQueue();
 const banner = new Banner(document.getElementById("banner")!, bannerQueue);
-const servePrompt = document.getElementById("serveprompt")!;
+const servePromptEl = document.getElementById("serveprompt")!;
 const labels = document.getElementById("labels")!;
 const resetbtn = document.getElementById("resetbtn")!;
 const votepanel = document.getElementById("votepanel")!;
@@ -312,23 +312,26 @@ function setRallyShots(n: number): void {
   audio.crowd(crowdLevel(n));
 }
 
-/** Lower-third serve prompt: instructions for the server, "<NAME> TO SERVE" for everyone else. */
+/**
+ * Lower-third serve prompt: instructions for the server, "<NAME> TO SERVE" for everyone else, and
+ * the add-a-bot hint for a Player warming up with a seat open.
+ */
 function renderServePrompt(): void {
-  const m = match;
-  if (!m || m.phase !== "serve" || !m.awaitingServe || !m.serverSlot) {
-    servePrompt.classList.remove("show");
+  const prompt = servePrompt(match, role, selfSlot, lastSeatOpen);
+  if (!prompt) {
+    servePromptEl.classList.remove("show");
     return;
   }
-  if (m.serverSlot === selfSlot) {
-    servePrompt.replaceChildren(m.tossing ? "Click to serve" : "Press Space to toss");
+  if ("text" in prompt) {
+    servePromptEl.replaceChildren(prompt.text);
   } else {
     // The nickname is user input: textContent only.
     const who = document.createElement("span");
     who.className = "who";
-    who.textContent = names.get(m.serverSlot)?.name ?? m.serverSlot;
-    servePrompt.replaceChildren(who, "to serve");
+    who.textContent = names.get(prompt.server)?.name ?? prompt.server;
+    servePromptEl.replaceChildren(who, "to serve");
   }
-  servePrompt.classList.add("show");
+  servePromptEl.classList.add("show");
 }
 
 /**

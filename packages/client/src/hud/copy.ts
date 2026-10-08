@@ -2,7 +2,7 @@
  * English broadcast copy for the match graphics (score call, Banner); the team names stay AZUL / ROJO.
  * Pure: no DOM, so it is unit tested directly.
  */
-import type { MatchEventKind, Team } from "@padel/shared";
+import type { MatchEventKind, MatchMsg, Role, Slot, Team } from "@padel/shared";
 
 /** Spaced en dash, the separator in every score line. */
 const DASH = " – ";
@@ -77,4 +77,25 @@ export function bannerFor(
     case "reset":
       return { title: "RESET", sub: null, tone: "neutral", team: null };
   }
+}
+
+/** The serve-prompt lower third: a line of text, or "<server's name> to serve" (`server`). */
+export type ServePrompt = { text: string } | { server: Slot };
+
+/**
+ * What the serve-prompt lower third says: the toss and strike instructions for the server, the
+ * server's name for everyone else, and, for a Player warming up with a seat open (a first solo
+ * visit), how to get a game going. Null hides it. Pure.
+ */
+export function servePrompt(
+  m: Pick<MatchMsg, "phase" | "awaitingServe" | "tossing" | "serverSlot"> | null,
+  role: Role,
+  selfSlot: Slot | null,
+  seatOpen: boolean,
+): ServePrompt | null {
+  if (!m) return null;
+  if (m.phase === "warmup") return role === "player" && seatOpen ? { text: "WARM-UP · PRESS B TO ADD A BOT" } : null;
+  if (m.phase !== "serve" || !m.awaitingServe || !m.serverSlot) return null;
+  if (m.serverSlot === selfSlot) return { text: m.tossing ? "Click to serve" : "Press Space to toss" };
+  return { server: m.serverSlot };
 }

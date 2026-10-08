@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerFor, scoreCall, teamLabel } from "../src/hud/copy.js";
+import { bannerFor, scoreCall, servePrompt, teamLabel } from "../src/hud/copy.js";
 
 describe("teamLabel", () => {
   it("names team A AZUL and team B ROJO", () => {
@@ -113,5 +113,31 @@ describe("bannerFor", () => {
       tone: "neutral",
       team: null,
     });
+  });
+});
+
+describe("servePrompt", () => {
+  const serve = { phase: "serve" as const, awaitingServe: true, tossing: false, serverSlot: "A1" as const };
+  const warmup = { phase: "warmup" as const, awaitingServe: false, tossing: false, serverSlot: null };
+
+  it("tells a player warming up alone with a seat open how to get a game", () => {
+    expect(servePrompt(warmup, "player", "A1", true)).toEqual({ text: "WARM-UP · PRESS B TO ADD A BOT" });
+  });
+
+  it("says nothing in warm-up to a spectator, or when no seat is open", () => {
+    expect(servePrompt(warmup, "spectator", null, true)).toBeNull();
+    expect(servePrompt(warmup, "player", "A1", false)).toBeNull();
+  });
+
+  it("gives the server the toss and strike instructions, and everyone else the server", () => {
+    expect(servePrompt(serve, "player", "A1", false)).toEqual({ text: "Press Space to toss" });
+    expect(servePrompt({ ...serve, tossing: true }, "player", "A1", false)).toEqual({ text: "Click to serve" });
+    expect(servePrompt(serve, "player", "B1", false)).toEqual({ server: "A1" });
+    expect(servePrompt(serve, "spectator", null, true)).toEqual({ server: "A1" });
+  });
+
+  it("is hidden once the serve is struck, and before any match state", () => {
+    expect(servePrompt({ ...serve, phase: "rally", awaitingServe: false }, "player", "A1", false)).toBeNull();
+    expect(servePrompt(null, "player", "A1", true)).toBeNull();
   });
 });
