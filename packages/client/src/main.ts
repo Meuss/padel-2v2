@@ -35,14 +35,15 @@ import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { VotePanel, votePanelView } from "./hud/votepanel.js";
 import { blurAfterClick } from "./hud/button.js";
 import { EmoteTray, NameTags, Reactions, type Project } from "./hud/overlays.js";
-import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
+import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomCountsReader, roomLine } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import { FINAL_DELAY_MS, ReplayController, finalDue } from "./replay/controller.js";
 import "./hud/hud.css";
 
 // Asked before anything is built: the request goes out (and wakes a sleeping server) while the
-// scene builds, and its 4 s timeout is not spent waiting behind that work.
-const roomCountsAtLoad = fetchRoomCounts(resolveServerUrl());
+// scene builds, and its 4 s timeout is not spent waiting behind that work. The first join screen
+// uses this reading; a later one (after a kick) asks again.
+const nextRoomCounts = roomCountsReader(() => fetchRoomCounts(resolveServerUrl()));
 
 const app = document.getElementById("app")!;
 const conn = document.getElementById("conn")!;
@@ -464,8 +465,8 @@ function renderRoom(roster: { players: readonly { isBot: boolean }[]; spectatorC
 }
 
 /** Before connecting, show the room from GET /status unless a roster has come in; silent on failure. */
-function showRoomCounts(counts: Promise<RoomCounts | null> = fetchRoomCounts(resolveServerUrl())): void {
-  void counts.then((c) => {
+function showRoomCounts(): void {
+  void nextRoomCounts().then((c) => {
     if (c && !roomFromRoster) joinRoom.textContent = countsLine(c);
   });
 }
@@ -678,7 +679,6 @@ function play(): void {
 
 fillJoinLegend(document.getElementById("join-controls")!);
 renderRoom(null);
-showRoomCounts(roomCountsAtLoad);
 // A form, so Enter in the field and the PLAY button both submit.
 joinForm.addEventListener("submit", (e) => {
   e.preventDefault();

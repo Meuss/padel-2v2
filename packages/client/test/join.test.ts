@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capName, countsLine, nameCount, parseStatus, roomLine, statusUrl } from "../src/hud/join.js";
+import { capName, countsLine, nameCount, parseStatus, roomCountsReader, roomLine, statusUrl, type RoomCounts } from "../src/hud/join.js";
 
 const human = { isBot: false };
 const bot = { isBot: true };
@@ -75,5 +75,23 @@ describe("countsLine and parseStatus", () => {
     expect(parseStatus({ playing: -1, watching: 0 })).toBeNull();
     expect(parseStatus({ playing: "1", watching: 0 })).toBeNull();
     expect(parseStatus(null)).toBeNull();
+  });
+});
+
+describe("roomCountsReader", () => {
+  it("asks /status once at load and hands that reading to the first join screen", async () => {
+    let calls = 0;
+    const next = roomCountsReader(() => Promise.resolve<RoomCounts | null>({ playing: ++calls, watching: 0 }));
+    expect(calls).toBe(1);
+    expect(await next()).toEqual({ playing: 1, watching: 0 });
+    expect(calls).toBe(1);
+  });
+
+  it("asks afresh on a later visit (after a kick)", async () => {
+    let calls = 0;
+    const next = roomCountsReader(() => Promise.resolve<RoomCounts | null>({ playing: ++calls, watching: 0 }));
+    await next();
+    expect(await next()).toEqual({ playing: 2, watching: 0 });
+    expect(calls).toBe(2);
   });
 });

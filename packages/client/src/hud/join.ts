@@ -56,6 +56,19 @@ export async function fetchRoomCounts(serverUrl: string, timeoutMs = 4000): Prom
   }
 }
 
+/**
+ * The join screen's /status readings: the request starts now (at page load, so it wakes a sleeping
+ * server early) and the first visit gets that reading; each later visit (after a kick) asks afresh.
+ */
+export function roomCountsReader(fetchCounts: () => Promise<RoomCounts | null>): () => Promise<RoomCounts | null> {
+  let atLoad: Promise<RoomCounts | null> | null = fetchCounts();
+  return () => {
+    const counts = atLoad ?? fetchCounts();
+    atLoad = null;
+    return counts;
+  };
+}
+
 /** The field's cap: 16 code points, like the server's (maxlength would count UTF-16 units). Pure. */
 export function capName(value: string): string {
   const points = Array.from(value);
