@@ -183,7 +183,7 @@ export class Room {
   private statsMatchId = -1;
   /** The match id whose end has been handled (stats frozen, Rematch vote opened). */
   private endedMatchId = -1;
-  /** Spectators who asked to Take seat during a rally, oldest first: seated at the next point break. */
+  /** Spectators who asked to Take seat during a rally or a toss, oldest first: seated at the next point break. */
   private pendingSeats: string[] = [];
 
   private constructor(
@@ -342,12 +342,12 @@ export class Room {
 
   /**
    * A Spectator asks for a Seat: a free one first, else a Bot's (on the team with fewer humans).
-   * Outside a rally they are seated at once; during one the request waits for the point to end,
-   * and is dropped if no Seat is open by then. Returns whether the request was seated or queued.
+   * Outside a rally they are seated at once; during one (or a toss) the request waits for the
+   * point to end, and is dropped if no Seat is open by then. Returns whether the request was seated or queued.
    */
   takeSeat(clientId: string): boolean {
     if (!this.clients.has(clientId) || this.seatOf(clientId) || !this.seatOpen()) return false;
-    if (this.match.phase !== "rally") return this.seatTaker(clientId);
+    if (!this.seatingDeferred()) return this.seatTaker(clientId);
     if (!this.pendingSeats.includes(clientId)) this.pendingSeats.push(clientId);
     return true;
   }
@@ -421,6 +421,11 @@ export class Room {
     // A new human voter changes what the current vote needs.
     if (this.vote) this.broadcastVote();
     return true;
+  }
+
+  /** Whether a Take seat must wait: a rally, or a toss in the air (a swap would void the serve). */
+  private seatingDeferred(): boolean {
+    return this.match.phase === "rally" || this.match.tossElapsed(this.clock) !== null;
   }
 
   /** At a point break, seat the Spectators who asked during the rally, oldest first. */
@@ -641,8 +646,8 @@ export class Room {
   step(): void {
     const now = this.clock;
     this.clock += TICK_MS;
-    // Take seat requests made during a rally wait for the point to end.
-    if (this.match.phase !== "rally" && this.pendingSeats.length > 0) this.seatPending();
+    // Take seat requests made during a rally or a toss wait for the point to end.
+    if (this.pendingSeats.length > 0 && !this.seatingDeferred()) this.seatPending();
     // Keep each player's defended side in sync with the match (handles swaps).
     for (const ps of this.slots.values()) ps.side = this.match.sideOf(ps.team);
 

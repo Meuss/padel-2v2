@@ -107,3 +107,37 @@ describe("take seat", () => {
     room.stop();
   });
 });
+
+describe("take seat during the toss", () => {
+  it("waits like a rally: queued, then seated at the next tick with no toss and no rally", async () => {
+    // A bot in A1 serves first; three idle humans hold the other seats.
+    const room = await Room.create({ seed: SEED });
+    room.debugAddBots(1);
+    const humans = ["p1", "p2", "p3"].map((id) => {
+      const c = fakeClient(id);
+      room.addClient(c.client);
+      room.claimSlot(id, id);
+      return c;
+    });
+    const p1 = humans[0]!;
+    const s = fakeClient("s");
+    room.addClient(s.client);
+    const match = () => p1.last("match")!;
+    let steps = 0;
+    while (!p1.last("match")?.tossing && steps++ < 600) room.step();
+    expect(match().tossing).toBe(true);
+
+    expect(room.takeSeat("s")).toBe(true);
+    expect(s.last("welcome")).toBeNull();
+    let seatedBusy = false;
+    steps = 0;
+    while (!s.last("welcome") && steps++ < 60 * 30) {
+      room.step();
+      const m = match();
+      if (s.last("welcome") && (m.tossing || m.phase === "rally")) seatedBusy = true;
+    }
+    expect(s.last("welcome")).toMatchObject({ role: "player", slot: "A1" });
+    expect(seatedBusy).toBe(false);
+    room.stop();
+  }, 30_000);
+});
