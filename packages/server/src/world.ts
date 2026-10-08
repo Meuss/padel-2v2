@@ -199,9 +199,10 @@ export class PhysicsWorld {
     this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
-  /** Directly set the ball's velocity — used to resolve a player's swing. */
+  /** Directly set the ball's velocity — used to resolve a player's swing. A hit clears the spin, as a placement does. */
   setBallVelocity(x: number, y: number, z: number): void {
     this.ball.setLinvel({ x, y, z }, true);
+    this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
   /**
