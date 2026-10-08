@@ -38,7 +38,7 @@ import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/bann
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
-import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
+import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
   isPlaying,
@@ -923,9 +923,11 @@ window.addEventListener("keydown", (e) => {
     toggleControls();
     return;
   }
-  if (e.key === "Escape" && controlsCard.showing) {
-    closeControls();
-    return;
+  if (e.key === "Escape") {
+    const closes = escapeCloses({ controlsCard: controlsCard.showing, tray: reactbar.classList.contains("open") });
+    if (closes === "controls") closeControls();
+    else if (closes === "tray") setTray(false);
+    if (closes) return;
   }
   if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
   else if (e.code === "KeyN" && role === "player") net.send({ t: "clearbots" });

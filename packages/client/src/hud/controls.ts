@@ -74,6 +74,12 @@ export function shouldShowCard(seen: boolean, role: Role): boolean {
   return role === "player" && !seen;
 }
 
+/** What Esc closes, topmost first: the controls card, then the emote tray. Pure. */
+export function escapeCloses(open: { controlsCard: boolean; tray: boolean }): "controls" | "tray" | null {
+  if (open.controlsCard) return "controls";
+  return open.tray ? "tray" : null;
+}
+
 // ── Drawing ──────────────────────────────────────────────────────────────────
 
 function div(className: string, text?: string): HTMLDivElement {

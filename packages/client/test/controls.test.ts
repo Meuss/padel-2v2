@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { controlRows, legendRows, persistSeenOnClose, shouldShowCard } from "../src/hud/controls.js";
+import { controlRows, escapeCloses, legendRows, persistSeenOnClose, shouldShowCard } from "../src/hud/controls.js";
 
 const keysOf = (rows: { keys: string[] }[]) => rows.map((r) => r.keys.join("+"));
 
@@ -67,5 +67,13 @@ describe("shouldShowCard", () => {
   it("never opens it by itself for a Spectator", () => {
     expect(shouldShowCard(false, "spectator")).toBe(false);
     expect(shouldShowCard(true, "spectator")).toBe(false);
+  });
+});
+
+describe("escapeCloses", () => {
+  it("closes the controls card first, then the emote tray, else nothing", () => {
+    expect(escapeCloses({ controlsCard: true, tray: true })).toBe("controls");
+    expect(escapeCloses({ controlsCard: false, tray: true })).toBe("tray");
+    expect(escapeCloses({ controlsCard: false, tray: false })).toBeNull();
   });
 });
