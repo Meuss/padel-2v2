@@ -77,7 +77,8 @@ Bots serve by themselves; you serve with `Space` then a click.
 
 - Everyone, spectators included, is kicked after **60 s** without mouse or keyboard
   activity.
-- Any human player can start a **reset vote** (RESET SET) to restart the match. It
+- Any human player can start a **reset vote** ("Reset the set", in the controls card
+  that `?` opens) to restart the match. It
   needs every human player to accept; one decline cancels it, and it expires after
   30 s. When a match ends, the Final card opens a **Rematch vote**.
 - Scoring follows modern padel: golden point at deuce, sets to 6 (win by 2),
