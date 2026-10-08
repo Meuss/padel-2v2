@@ -1,0 +1,477 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-08T08:23:48+00:00",
+  "title": "Design System: Meuss Padel Club",
+  "extensions": {
+    "colorMeta": {
+      "bug-navy": {
+        "role": "primary",
+        "displayName": "Broadcast Navy",
+        "canonical": "#0f1a33",
+        "tonalRamp": [
+          "#0e182f",
+          "#1a2c57",
+          "#264282",
+          "#345ab1",
+          "#567acd",
+          "#859fdb",
+          "#b4c4e9",
+          "#e3e9f7"
+        ]
+      },
+      "bug-navy-2": {
+        "role": "primary",
+        "displayName": "Raised Navy",
+        "canonical": "#16244a",
+        "tonalRamp": [
+          "#0e172f",
+          "#1a2a56",
+          "#273f82",
+          "#3556b1",
+          "#5676cd",
+          "#859cdb",
+          "#b4c2e9",
+          "#e3e9f7"
+        ]
+      },
+      "navy-lift": {
+        "role": "primary",
+        "displayName": "Lit Navy",
+        "canonical": "#172649",
+        "tonalRamp": [
+          "#0f182f",
+          "#1b2c55",
+          "#284380",
+          "#375baf",
+          "#587bca",
+          "#879fd9",
+          "#b5c4e8",
+          "#e4e9f6"
+        ]
+      },
+      "azul": {
+        "role": "secondary",
+        "displayName": "Azul Sky",
+        "canonical": "#62b0ff",
+        "tonalRamp": [
+          "#001e3d",
+          "#003870",
+          "#0054a8",
+          "#0072e6",
+          "#2491ff",
+          "#61afff",
+          "#9eceff",
+          "#dbedff"
+        ]
+      },
+      "rojo": {
+        "role": "secondary",
+        "displayName": "Rojo Signal",
+        "canonical": "#d8383a",
+        "tonalRamp": [
+          "#330a0b",
+          "#5e1213",
+          "#8d1c1d",
+          "#c02628",
+          "#db4849",
+          "#e57b7c",
+          "#efaeaf",
+          "#f9e1e1"
+        ]
+      },
+      "optic": {
+        "role": "tertiary",
+        "displayName": "Optic Ball",
+        "canonical": "#e4f23a",
+        "tonalRamp": [
+          "#353904",
+          "#626907",
+          "#939e0a",
+          "#c8d70e",
+          "#e3f131",
+          "#ebf56b",
+          "#f3f9a4",
+          "#fafdde"
+        ]
+      },
+      "bug-white": {
+        "role": "neutral",
+        "displayName": "Floodlit White",
+        "canonical": "#f4f7ff",
+        "tonalRamp": [
+          "#00113d",
+          "#001f70",
+          "#002ea8",
+          "#003fe6",
+          "#2460ff",
+          "#618cff",
+          "#9eb9ff",
+          "#dbe5ff"
+        ]
+      },
+      "bug-ink": {
+        "role": "neutral",
+        "displayName": "Broadcast Ink",
+        "canonical": "#0b1020",
+        "tonalRamp": [
+          "#10172e",
+          "#1d2a53",
+          "#2b3f7d",
+          "#3b55ab",
+          "#5c75c7",
+          "#899cd7",
+          "#b7c2e6",
+          "#e4e9f6"
+        ]
+      },
+      "turf": {
+        "role": "world",
+        "displayName": "Cerulean Turf",
+        "canonical": "#2c7cc6",
+        "tonalRamp": [
+          "#0b1f32",
+          "#14395c",
+          "#1f568a",
+          "#2a76bc",
+          "#4c94d7",
+          "#7eb2e2",
+          "#b0d0ed",
+          "#e2eef9"
+        ]
+      },
+      "surround": {
+        "role": "world",
+        "displayName": "Deep Surround",
+        "canonical": "#184a82",
+        "tonalRamp": [
+          "#0a1d34",
+          "#11365f",
+          "#1a518e",
+          "#246ec2",
+          "#468ddd",
+          "#7aade6",
+          "#adcdf0",
+          "#e1ecf9"
+        ]
+      },
+      "steel": {
+        "role": "world",
+        "displayName": "Cage Steel",
+        "canonical": "#0d1016",
+        "tonalRamp": [
+          "#171c26",
+          "#2a3347",
+          "#3f4d6a",
+          "#556990",
+          "#7588ae",
+          "#9ca9c4",
+          "#c2cadb",
+          "#e9ecf2"
+        ]
+      },
+      "mesh": {
+        "role": "world",
+        "displayName": "Galvanised Mesh",
+        "canonical": "#2a313c",
+        "tonalRamp": [
+          "#191d24",
+          "#2e3642",
+          "#455163",
+          "#5e6e87",
+          "#7e8da5",
+          "#a2adbe",
+          "#c6cdd7",
+          "#eaecf0"
+        ]
+      },
+      "glass-tint": {
+        "role": "world",
+        "displayName": "Glass Tint",
+        "canonical": "#9fc4dc",
+        "tonalRamp": [
+          "#10222d",
+          "#1e3e52",
+          "#2d5d7b",
+          "#3d7ea8",
+          "#5e9cc4",
+          "#8bb8d5",
+          "#b8d3e5",
+          "#e5eff5"
+        ]
+      },
+      "sky": {
+        "role": "world",
+        "displayName": "Night Sky",
+        "canonical": "#05070d",
+        "tonalRamp": [
+          "#11182c",
+          "#1f2c51",
+          "#2f417a",
+          "#4059a6",
+          "#6179c2",
+          "#8d9ed3",
+          "#b9c4e4",
+          "#e5e9f5"
+        ]
+      },
+      "led-background": {
+        "role": "world",
+        "displayName": "LED Navy",
+        "canonical": "#0b1a3a",
+        "tonalRamp": [
+          "#0a1733",
+          "#122a5e",
+          "#1b3f8d",
+          "#2556c1",
+          "#4776dc",
+          "#7a9ce6",
+          "#aec3f0",
+          "#e1e9f9"
+        ]
+      },
+      "timing-perfect": {
+        "role": "world",
+        "displayName": "Timing Green",
+        "canonical": "#7bd13a",
+        "tonalRamp": [
+          "#1c320c",
+          "#335b15",
+          "#4d8820",
+          "#69ba2b",
+          "#88d54d",
+          "#a9e17f",
+          "#caedb0",
+          "#ecf8e2"
+        ]
+      },
+      "timing-off": {
+        "role": "world",
+        "displayName": "Timing Amber",
+        "canonical": "#f5a524",
+        "tonalRamp": [
+          "#3b2503",
+          "#6b4405",
+          "#a16607",
+          "#db8b0a",
+          "#f5a92d",
+          "#f8c168",
+          "#fbd9a2",
+          "#fdf1dd"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Wordmark",
+        "purpose": "The stacked MEUSS / PADEL / CLUB wordmark on the join screen."
+      },
+      "headline": {
+        "displayName": "Banner Title",
+        "purpose": "Banner titles (GAME, SET, FAULT); Barlow Semi Condensed 700."
+      },
+      "title": {
+        "displayName": "Bug Row",
+        "purpose": "Score bug team rows and scores; tabular digits."
+      },
+      "body": {
+        "displayName": "Broadcast Call",
+        "purpose": "Serve prompt and single-line calls."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Name tags, buttons, pills, legend captions."
+      }
+    },
+    "shadows": [
+      {
+        "name": "plate",
+        "value": "0 6px 18px rgba(3, 6, 14, 0.5)",
+        "purpose": "Default lift for navy plates over the bright court (bug panels, vote panel, emote tray, REPLAY)."
+      },
+      {
+        "name": "card",
+        "value": "0 12px 40px rgba(3, 6, 14, 0.55)",
+        "purpose": "The centred Final card and controls card."
+      },
+      {
+        "name": "slab",
+        "value": "0 6px 18px rgba(3, 6, 14, 0.35)",
+        "purpose": "The join PLAY slab at rest; 0 8px 22px / 0.45 on hover, 0 3px 10px / 0.35 on press."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Every entrance, hover and step-aside transition."
+      },
+      {
+        "name": "ease-exit",
+        "value": "cubic-bezier(0.7, 0, 0.84, 0)",
+        "purpose": "Wipe-out of the Banner and Final card."
+      },
+      {
+        "name": "wipe-in",
+        "value": "clip-path inset(0 100% 0 0) to inset(0), 220-280ms",
+        "purpose": "Banner, Final card, controls card, vote panel and REPLAY plate entrances, left to right."
+      },
+      {
+        "name": "wipe-out",
+        "value": "clip-path to inset(0 0 0 100%), 180-200ms",
+        "purpose": "Graphics leave by closing from the left."
+      },
+      {
+        "name": "step-aside",
+        "value": "opacity 180ms",
+        "purpose": "Bug, serve prompt, tags and legend fade while a bigger graphic is up."
+      },
+      {
+        "name": "cell-flash",
+        "value": "background flash 300ms",
+        "purpose": "A changed score cell washes brighter, then settles; no scale."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "opacity fade 180-220ms linear",
+        "purpose": "Replaces every wipe under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "join-narrow",
+        "value": "max-aspect-ratio: 5/4",
+        "purpose": "Join column centres on a 0.9 navy scrim."
+      },
+      {
+        "name": "touch-note",
+        "value": "(hover: none) and (pointer: coarse)",
+        "purpose": "A desktop-only note strip on touch devices."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action a graphic asks for: navy plate, optic outline, tinted on hover.",
+      "html": "<button class=\"ds-btn-primary\">ACCEPT</button>",
+      "css": ".ds-btn-primary{padding:0.45em 0.9em;background:var(--bug-navy,#0f1a33);border:max(1.5px,0.12vw) solid var(--optic,#e4f23a);border-radius:2px;color:var(--bug-white,#f4f7ff);font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:clamp(14px,1vw,22px);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;line-height:1;cursor:pointer;transition:background-color 160ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-primary:hover{background:rgba(228,242,58,0.16)}.ds-btn-primary:active{background:rgba(228,242,58,0.26)}.ds-btn-primary:focus-visible{outline:2px solid #f4f7ff;outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "A quiet secondary control: outline only, fills navy on hover.",
+      "html": "<button class=\"ds-btn-ghost\">DECLINE</button>",
+      "css": ".ds-btn-ghost{padding:0.45em 0.9em;background:rgba(11,16,32,0.35);border:1px solid rgba(244,247,255,0.3);border-radius:2px;color:#f4f7ff;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:clamp(14px,1vw,22px);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;line-height:1;cursor:pointer;transition:background-color 160ms cubic-bezier(0.16,1,0.3,1),border-color 160ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-ghost:hover{background:#0f1a33;border-color:rgba(244,247,255,0.65)}.ds-btn-ghost:active{background:#16244a}.ds-btn-ghost:focus-visible{outline:2px solid #f4f7ff;outline-offset:2px}"
+    },
+    {
+      "name": "PLAY Slab",
+      "kind": "button",
+      "refersTo": "button-play",
+      "description": "The join screen's single action: a solid optic slab with ink caps.",
+      "html": "<button class=\"ds-btn-play\">PLAY</button>",
+      "css": ".ds-btn-play{width:330px;height:72px;background:#e4f23a;border:none;border-radius:4px;color:#0b1020;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:48px;font-weight:700;letter-spacing:0.03em;line-height:1;text-transform:uppercase;cursor:pointer;box-shadow:0 6px 18px rgba(3,6,14,0.35);transition:background-color 140ms cubic-bezier(0.16,1,0.3,1),transform 140ms cubic-bezier(0.16,1,0.3,1),box-shadow 140ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-play:hover{background:#edf86b;box-shadow:0 8px 22px rgba(3,6,14,0.45)}.ds-btn-play:active{background:#d4e22f;transform:translateY(1px);box-shadow:0 3px 10px rgba(3,6,14,0.35)}.ds-btn-play:focus-visible{outline:2px solid #f4f7ff;outline-offset:3px}"
+    },
+    {
+      "name": "Nickname Field",
+      "kind": "input",
+      "refersTo": "input-nickname",
+      "description": "Translucent white field on navy; optic ring and caret on focus.",
+      "html": "<div class=\"ds-join\"><label class=\"ds-join-label\" for=\"ds-nick\">NICKNAME</label><input id=\"ds-nick\" class=\"ds-input\" maxlength=\"16\"></div>",
+      "css": ".ds-join{display:flex;flex-direction:column;gap:8px;width:330px;padding:24px;background:#0f1a33}.ds-join-label{color:rgba(244,247,255,0.68);font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:25px;font-weight:500;letter-spacing:0.02em;line-height:1;text-transform:uppercase}.ds-input{height:50px;padding:0 0.55em;background:rgba(244,247,255,0.14);border:1px solid rgba(244,247,255,0.34);border-radius:4px;color:#f4f7ff;caret-color:#e4f23a;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:25px;font-weight:600;letter-spacing:0.02em;outline:none;transition:border-color 160ms cubic-bezier(0.16,1,0.3,1),background-color 160ms cubic-bezier(0.16,1,0.3,1),box-shadow 160ms cubic-bezier(0.16,1,0.3,1)}.ds-input:hover{border-color:rgba(244,247,255,0.55)}.ds-input:focus{background:rgba(244,247,255,0.18);border-color:#e4f23a;box-shadow:0 0 0 1px #e4f23a}"
+    },
+    {
+      "name": "Score Bug",
+      "kind": "custom",
+      "refersTo": "score-bug",
+      "description": "Bottom-left broadcast score plate: header, two team rows with bar, dot, serve ball, games and points cells.",
+      "html": "<div class=\"ds-bug\"><div class=\"ds-bug-head\">MEUSS PADEL CLUB</div><div class=\"ds-bug-row ds-azul\"><i class=\"ds-bar\"></i><span class=\"ds-name\"><i class=\"ds-dot\"></i>AZUL<svg class=\"ds-serve\" viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"5\"/></svg></span><span class=\"ds-games\">0</span><span class=\"ds-points\">0</span></div><div class=\"ds-bug-row ds-rojo\"><i class=\"ds-bar\"></i><span class=\"ds-name\"><i class=\"ds-dot\"></i>ROJO</span><span class=\"ds-games\">0</span><span class=\"ds-points\">15</span></div></div>",
+      "css": ".ds-bug{width:290px;background:#0f1a33;border:1px solid rgba(244,247,255,0.55);color:#f4f7ff;font-family:'Barlow Semi Condensed','Barlow Condensed','Arial Narrow',sans-serif;text-transform:uppercase;line-height:1;font-variant-numeric:tabular-nums}.ds-bug-head{display:flex;align-items:center;height:34px;padding:0 0.75em;background:linear-gradient(180deg,#14234a 0%,#0f1a33 100%);border-bottom:1px solid rgba(244,247,255,0.24);font-size:19px;font-weight:700;letter-spacing:0.01em}.ds-bug-row{display:flex;align-items:stretch;height:38px;background:linear-gradient(180deg,#172649 0%,#0f1a33 100%);font-size:26px;font-weight:700}.ds-bug-row+.ds-bug-row{border-top:1px solid rgba(244,247,255,0.24)}.ds-bar{width:5px;flex:none}.ds-dot{width:0.55em;aspect-ratio:1;margin:0 0.4em 0 0.5em;border-radius:50%;flex:none}.ds-azul .ds-bar,.ds-azul .ds-dot{background:#62b0ff}.ds-rojo .ds-bar,.ds-rojo .ds-dot{background:#d8383a}.ds-name{flex:1;display:flex;align-items:center;gap:0.35em}.ds-serve{width:0.42em;height:0.42em;fill:#e4f23a}.ds-games,.ds-points{width:15%;display:grid;place-items:center}.ds-games{background:#16244a;border-left:1px solid rgba(244,247,255,0.24)}.ds-points{background:#f4f7ff;color:#0b1020}"
+    },
+    {
+      "name": "Banner",
+      "kind": "custom",
+      "refersTo": "banner",
+      "description": "Between-points lower third: tone rule, navy title band, hairline, sub band.",
+      "html": "<div class=\"ds-banner\"><div class=\"ds-bn-rule\"></div><div class=\"ds-bn-title\">GAME</div><div class=\"ds-bn-sub\">AZUL 5 – 4 ROJO</div></div>",
+      "css": ".ds-banner{width:640px;background:#0f1a33;color:#f4f7ff;font-family:'Barlow Semi Condensed','Barlow Condensed','Arial Narrow',sans-serif;text-transform:uppercase;line-height:1;text-align:center;font-variant-numeric:tabular-nums;animation:ds-wipe 220ms cubic-bezier(0.16,1,0.3,1)}.ds-bn-rule{height:5px;background:#62b0ff}.ds-bn-title{display:grid;place-items:center;height:96px;font-size:84px;font-weight:700;letter-spacing:0.01em}.ds-bn-sub{display:grid;place-items:center;height:60px;border-top:1px solid rgba(244,247,255,0.26);font-size:42px;font-weight:500}@keyframes ds-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}@media (prefers-reduced-motion:reduce){.ds-banner{animation:none}}"
+    },
+    {
+      "name": "Name Tag",
+      "kind": "chip",
+      "refersTo": "nametag",
+      "description": "Small navy plate over a player, team-coloured underline; between points only.",
+      "html": "<span class=\"ds-tag\">FEDERER</span> <span class=\"ds-tag ds-tag-rojo\">DJOKOVIC</span>",
+      "css": ".ds-tag{display:inline-block;max-width:16ch;padding:0.3em 0.55em 0.2em;overflow:hidden;background:#0f1a33;border-bottom:2px solid #62b0ff;color:#f4f7ff;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:15px;font-weight:600;letter-spacing:0.06em;line-height:1;text-transform:uppercase;text-overflow:ellipsis;white-space:nowrap}.ds-tag-rojo{border-bottom-color:#d8383a}"
+    },
+    {
+      "name": "Replay Tag",
+      "kind": "custom",
+      "refersTo": "replay-tag",
+      "description": "Rojo plate with a white dot heading the top-right column during an instant replay.",
+      "html": "<div class=\"ds-replay\"><i></i>REPLAY</div>",
+      "css": ".ds-replay{display:inline-flex;align-items:center;gap:0.3em;height:44px;padding:0 0.42em 0 0.36em;background:#d8383a;color:#f4f7ff;border-radius:4px;box-shadow:0 6px 18px rgba(3,6,14,0.5);font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:33px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;line-height:1}.ds-replay i{width:0.42em;height:0.42em;border-radius:50%;background:#f4f7ff}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Broadcast",
+    "overview": "**Creative North Star: \"The Night Broadcast\"**\n\nThe match is a pro-tour television feed of a floodlit night session. The 3D world is a black steel cage on a cerulean court under white floodlight banks, with dark stands falling away to near-black sky. Everything laid over that picture is broadcast graphics, not game menus: flat navy plates, condensed caps, tabular digits, thin coloured rules, and wipes that run left to right the way a vision mixer cuts them in. The rejected alternative is the floating, glassy, rounded game HUD.\n\nDensity follows the broadcast's rhythm. During the rally the screen holds only the score bug (bottom-left), the player's own marker, quiet name tags and a dimmed controls legend. Between points the graphics take over: a centred Banner lower third, an instant replay with its REPLAY plate, and at the set's end a centred Final card. Each one dismisses the others; two big graphics never share the screen.\n\nCopy is English broadcast copy set in uppercase condensed caps. The only Spanish words are the team names AZUL and ROJO.",
+    "keyCharacteristics": [
+      "Flat navy plates (#0f1a33) with off-white type, square-shouldered (2px) corners.",
+      "Barlow Condensed for broadcast copy, Barlow Semi Condensed for the large graphic lettering; uppercase, tabular digits throughout.",
+      "Team colour is carried by bars, dots, rules and underlines, never by flooding a panel.",
+      "Optic yellow is the ball's colour and appears in the HUD only as the serve dot, thin accent rules and the single call to action.",
+      "Graphics enter on a left-to-right clip wipe on a long ease-out curve and fall back to a fade under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The Optic Is The Ball Rule",
+        "body": "Optic yellow belongs to the ball. In the HUD it appears only as a rule, the serve dot, a glyph highlight, a focus ring, or the outline or fill of the one action a screen asks for. It never fills a panel or a block of text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Team Stripe Rule",
+        "body": "Team colour marks a plate from its edge: a 4px bar, a dot, a 2px underline or the top rule. Plates stay navy. When a team wins, its colour moves onto the rule or the winner line, not the card.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tone Rides The Rule Rule",
+        "body": "The top rule of a lower third carries its meaning: optic when neutral, rojo for a fault, the team's colour for its GAME or SET.",
+        "section": "colors"
+      },
+      {
+        "name": "The All-Caps Broadcast Rule",
+        "body": "HUD copy is uppercase condensed caps on a line height of 1. The exceptions are the join screen's helper sentences and the controls card's how-to notes, which are sentence case, Barlow 500 to 600, with a line height of 1.15 to 1.25.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Score Rule",
+        "body": "Any element that shows a score, count or timer sets `font-variant-numeric: tabular-nums`.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Plate Rule",
+        "body": "Graphics are opaque navy. A plate is translucent only for a legibility scrim (the join gradient, the dimmed legend plate at 0.74, the score call at 0.92), never for a frosted-glass look.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** build every new graphic on a flat bug-navy plate with bug-white uppercase Barlow caps, tabular digits and a 2px corner.",
+      "**Do** carry meaning on a rule: a max(3px, 0.6vh) top rule in optic, rojo or a team's colour.",
+      "**Do** bring graphics in with a left-to-right clip-path wipe on cubic-bezier(0.16, 1, 0.3, 1) in 160 to 280ms, and fall back to a plain opacity fade under `prefers-reduced-motion`.",
+      "**Do** make other graphics step aside (opacity 0, 180ms) when a Banner, card or the join screen takes the stage.",
+      "**Do** anchor lower thirds at 4.9vw × 4.6vh from the bottom corners and take sizes from vh or vw so the HUD scales with the frame.",
+      "**Do** keep team colours to AZUL #62b0ff and ROJO #d8383a, matched between hud.css and world/palette.ts."
+    ],
+    "donts": [
+      "**Don't** use frosted glass, backdrop blur, glows or large rounded corners on HUD panels. The system rejects the floating-panel game HUD.",
+      "**Don't** fill a panel, a block of text or a large area with optic. It is the ball's colour.",
+      "**Don't** flood a plate with a team colour. Team identity sits on a bar, dot, underline or rule.",
+      "**Don't** set HUD copy in a system UI face. Broadcast type is Barlow Condensed or Barlow Semi Condensed.",
+      "**Don't** add small tracked labels above titles. A graphic's title is its first line.",
+      "**Don't** scale-bounce a score change. The cell flashes its colour and settles."
+    ]
+  }
+}
