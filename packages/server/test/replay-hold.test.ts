@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { isNotable, replayLengthMs, type MatchMsg, type ShotKind, type Team } from "@padel/shared";
+import {
+  NOTABLE_RALLY_SHOTS,
+  PLAYER,
+  REPLAY_DELAY_MS,
+  SWING,
+  TICK_MS,
+  isNotable,
+  replayLengthMs,
+  type MatchMsg,
+  type ShotKind,
+  type Team,
+} from "@padel/shared";
 import { Room } from "../src/room.js";
-import { fakeClient } from "./fakes.js";
+import { fakeClient, sendInput, stepUntil } from "./fakes.js";
 
 const POINT_ORDER = ["0", "15", "30", "40"];
 const scoreOf = (m: MatchMsg, team: Team) =>
@@ -86,4 +97,41 @@ describe("a Bot holds its toss for the replay", () => {
     expect(plain.length).toBeGreaterThan(0);
     for (const p of plain) expect(p.tossMs! - p.endMs).toBeLessThan(3500);
   }, 60_000);
+});
+
+describe("the point a Bot's hold reads", () => {
+  it("warm-up shots and an earlier point's shots never make a double missed toss notable", async () => {
+    const room = await Room.create({ seed: 7 });
+    const p = fakeClient("p1");
+    room.addClient(p.client);
+    room.claimSlot("p1", "Ana");
+    stepUntil(room, () => p.last("snapshot") !== null, 3);
+    // A1 alone warms up with NOTABLE_RALLY_SHOTS swings, each at a ball passing its racket.
+    for (let i = 0; i < NOTABLE_RALLY_SHOTS; i++) {
+      room.debugPlaceBall({ x: -1.5, y: PLAYER.racketHeight, z: -5 }, { x: 0, y: 0, z: -12 });
+      sendInput(room, "p1", { shot: "drive", aim: { x: 0, z: 1 }, view: room.serverTime });
+      room.step();
+      for (let t = 0; t <= SWING.cooldownMs / TICK_MS; t++) room.step(); // past the swing cooldown
+    }
+    for (let i = 0; i < 3; i++) room.step(); // the next snapshot carries the last shots
+    const warmupShots = p.messages().flatMap((m) => (m.t === "snapshot" ? (m.shots ?? []) : []));
+    expect(warmupShots.length).toBe(NOTABLE_RALLY_SHOTS);
+    // B1 (a Bot) joins: A1 serves the first game and misses every toss twice, so B takes it.
+    room.addBot("p1");
+    const match = () => p.last("match")!;
+    for (let pt = 0; pt < 4; pt++) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect(stepUntil(room, () => match().phase === "serve" && match().serverSlot === "A1", 600)).not.toBeNull();
+        sendInput(room, "p1", { serve: true });
+        expect(stepUntil(room, () => match().phase !== "serve", 600)).not.toBeNull();
+      }
+    }
+    expect(match().gamesB).toBe(1);
+    // B1 serves the next game at the usual pace: no replay of a notable point to wait for.
+    expect(stepUntil(room, () => match().phase === "serve" && match().serverSlot === "B1", 600)).not.toBeNull();
+    const setupMs = room.serverTime;
+    expect(stepUntil(room, () => match().tossing, 60 * 10)).not.toBeNull();
+    expect(room.serverTime - setupMs).toBeLessThan(REPLAY_DELAY_MS);
+    room.stop();
+  }, 30_000);
 });

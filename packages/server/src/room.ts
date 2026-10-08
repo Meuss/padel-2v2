@@ -187,12 +187,16 @@ export class Room {
   private statsMatchId = -1;
   /** The match id whose end has been handled (stats frozen, Rematch vote opened). */
   private endedMatchId = -1;
-  /** The current point, for its replay: when it was served, its shots, and the score it is played at. */
+  /**
+   * The current point, for its replay: when it was served, its shots, and the score it is played
+   * at. A new one starts at each serve set-up (`pointSetupId` is the set-up it belongs to).
+   */
   private point: { startMs: number | null; shots: { team: Team; kind: ShotKind }[]; golden: boolean } = {
     startMs: null,
     shots: [],
     golden: false,
   };
+  private pointSetupId = -1;
   /** Bots toss no earlier than this: clients are showing the replay of a notable point until then. */
   private replayHoldUntil = 0;
   /** Spectators who asked to Take seat during a rally or a toss, oldest first: seated at the next point break. */
@@ -634,15 +638,24 @@ export class Room {
     }
   }
 
-  /** Report a Shot in the next snapshot, and count it in the match stats (unless warming up). */
+  /**
+   * A serve was just set up (a new point, a second serve, a let, or a new server): start a fresh
+   * point, so a point with no serve struck (a double missed toss) never reads the last one's shots.
+   */
+  private trackPointSetup(): void {
+    if (this.match.phase !== "serve" || this.match.currentSetupId === this.pointSetupId) return;
+    this.pointSetupId = this.match.currentSetupId;
+    const m = this.match.toMessage(); // the score this point is played at
+    this.point = { startMs: null, shots: [], golden: !m.tiebreak && m.pointA === "40" && m.pointB === "40" };
+  }
+
+  /** Report a Shot in the next snapshot, and count it in the point and the match stats (unless warming up). */
   private recordShot(ps: PlayerSlot, shot: ShotEvent): void {
-    if (shot.kind === "serve") {
-      const m = this.match.toMessage(); // once a serve: the score this point is played at
-      this.point = { startMs: this.clock, shots: [], golden: !m.tiebreak && m.pointA === "40" && m.pointB === "40" };
-    }
-    this.point.shots.push({ team: ps.team, kind: shot.kind });
     this.pendingShots.push(shot);
-    if (this.match.phase !== "warmup") this.currentStats().shot(ps.team, shot.kind, shot.timing);
+    if (this.match.phase === "warmup") return;
+    if (shot.kind === "serve") this.point.startMs = this.clock;
+    this.point.shots.push({ team: ps.team, kind: shot.kind });
+    this.currentStats().shot(ps.team, shot.kind, shot.timing);
   }
   /** Per-tick session upkeep: vote timeout and idle auto-kick. */
   private maintainSession(): void {
@@ -692,6 +705,7 @@ export class Room {
   step(): void {
     const now = this.clock;
     this.clock += TICK_MS;
+    this.trackPointSetup(); // a set-up between ticks (a roster change, a reset vote)
     // Take seat requests made during a rally or a toss wait for the point to end.
     if (this.pendingSeats.length > 0 && !this.seatingDeferred()) this.seatPending();
     // Keep each player's defended side in sync with the match (handles swaps).
@@ -727,6 +741,7 @@ export class Room {
       contacts,
     );
     if (action.hold) this.holdBall(action.hold);
+    this.trackPointSetup(); // a set-up by the engine this tick
     this.trackMatch();
     if (this.match.phase === "warmup") this.warmupBall(now);
     this.placeServeAvatars();
