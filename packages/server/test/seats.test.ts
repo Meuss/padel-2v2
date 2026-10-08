@@ -36,3 +36,58 @@ describe("one seat per connection", () => {
     room.stop();
   });
 });
+
+/** Four humans in A1, B1, A2, B2. */
+async function fourHumans() {
+  const room = await Room.create({ seed: SEED });
+  const clients = ["p1", "p2", "p3", "p4"].map((id) => {
+    const c = fakeClient(id);
+    room.addClient(c.client);
+    room.claimSlot(id, id);
+    return c;
+  });
+  room.step();
+  const idAt = (slot: string) => clients[["A1", "B1", "A2", "B2"].indexOf(slot)]!.client.id;
+  return { room, clients, idAt };
+}
+
+describe("the server leaving between points", () => {
+  it("after the match ends keeps the phase over, with the rematch vote intact", async () => {
+    const { room, clients, idAt } = await fourHumans();
+    room.debugEndMatch("A");
+    room.step();
+    const watcher = clients[0]!;
+    const server = watcher.last("match")!.serverSlot!;
+    const leaver = idAt(server);
+    const stayer = clients.find((c) => c.client.id !== leaver)!;
+    room.removeClient(leaver);
+    for (let i = 0; i < 10; i++) room.step();
+    expect(stayer.last("match")).toMatchObject({ phase: "over", winner: "A" });
+    expect(stayer.last("vote")).toMatchObject({ active: true, kind: "rematch", needed: 3 });
+    room.stop();
+  });
+
+  it("during the pause between points keeps the pause, and sets up the serve when it ends", async () => {
+    const { room, clients, idAt } = await fourHumans();
+    const p1 = clients[0]!;
+    const server = p1.last("match")!.serverSlot!;
+    // A toss left to expire is a fault: the pause before the second serve follows.
+    room.handleInput(idAt(server), {
+      t: "input", seq: 1, ts: 0, move: { x: 0, z: 0 }, aim: { x: 0, z: 1 }, shot: null, view: room.serverTime, serve: true,
+    });
+    let steps = 0;
+    while (p1.last("match")!.phase !== "between" && steps++ < 600) room.step();
+    expect(p1.last("match")!.phase).toBe("between");
+    const leaver = idAt(p1.last("match")!.serverSlot!);
+    const stayer = clients.find((c) => c.client.id !== leaver)!;
+    room.removeClient(leaver);
+    room.step();
+    expect(stayer.last("match")!.phase).toBe("between");
+    let waited = 0;
+    while (stayer.last("match")!.phase === "between" && waited++ < 600) room.step();
+    expect(waited).toBeGreaterThan(30); // the pause ran on, it was not cut short
+    expect(stayer.last("match")!.phase).toBe("serve");
+    expect(stayer.last("match")!.serverSlot).not.toBeNull();
+    room.stop();
+  });
+});

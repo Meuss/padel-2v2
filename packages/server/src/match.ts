@@ -148,7 +148,9 @@ export class MatchEngine {
       return;
     }
     if (this.phase === "warmup") this.startMatch(now);
-    else if (!this.players.some((p) => p.slot === this.serverSlot)) {
+    // The server left. Over: nothing to set up (a rematch picks the server). Between points: the
+    // pause runs on, and `advance` sets up with whoever serves now. Otherwise set up again at once.
+    else if (this.phase !== "over" && this.phase !== "between" && !this.players.some((p) => p.slot === this.serverSlot)) {
       this.setupServe(now, 1);
     }
   }
