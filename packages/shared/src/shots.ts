@@ -60,7 +60,10 @@ export function dragKeep(t: number): number {
 /**
  * Vertical launch speed for a ball struck at contactY, distToNet from the net, approaching it
  * at speedTowardNet (the horizontal speed component toward the net), to pass the net plane
- * `clearance` above the tape. The time to the net allows for drag (to first order).
+ * `clearance` above the tape. Solved under exact linear drag (dv/dt = -c·v, plus gravity on y),
+ * the ball's own damping in the physics: the time to the net is -ln(1 - c·d/v)/c, and the
+ * vertical rise over it is damped too. A ball too slow to ever reach the net (c·d/v >= 0.95)
+ * is solved for a 3 s flight instead, so the lift stays finite.
  *
  * The tape is taken at its centre height (COURT.netHeight), not at netHeightAt(crossing x):
  * the crossing point is not known here (off-timing turns the aim afterwards), and the net
@@ -73,9 +76,11 @@ export function clearanceLift(
   speedTowardNet: number,
   clearance: number = SHOT.netClearance,
 ): number {
-  const t0 = distToNet / speedTowardNet;
-  const t = t0 / dragKeep(t0);
-  return (COURT.netHeight + clearance - contactY + 0.5 * GRAVITY * t * t) / t;
+  const c = SHOT.dragAllowance;
+  const k = (c * distToNet) / speedTowardNet;
+  const t = k < 0.95 ? -Math.log(1 - k) / c : 3;
+  const e = (1 - Math.exp(-c * t)) / c;
+  return (COURT.netHeight + clearance - contactY + (GRAVITY * t) / c) / e - GRAVITY / c;
 }
 
 /** |aim.z|, floored at SHOT.minAimTowardNet so a near-sideways aim can't ask for an unbounded shot. */

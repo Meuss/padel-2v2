@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHOT, TICK_RATE, shotVelocity, type Timing } from "@padel/shared";
+import { COURT, SHOT, TICK_RATE, clearanceLift, shotVelocity, type Timing } from "@padel/shared";
 import { PhysicsWorld } from "../src/world.js";
 
 /** Launch a Lob from `distToNet` behind the net (z < 0) at height y; return how far past the net it first lands. */
@@ -32,4 +32,26 @@ describe("distance-aware Lob through the physics world", () => {
     expect(late).toBeGreaterThan(perfect);
     expect(late).toBeLessThan(SHOT.lobDepthPastNet + SHOT.offTiming.lobDepthErrorM + 1);
   });
+});
+
+describe("Drive net clearance through the physics world", () => {
+  it("a ball launched with clearanceLift crosses the net plane within 3 cm of the aimed height", async () => {
+    for (const [y, dist, speed] of [
+      [0.4, 9, 12.5],
+      [0.25, 9.5, 10.25],
+    ] as const) {
+      const world = await PhysicsWorld.create();
+      world.placeBall({ x: 0, y, z: -dist }, { x: 0, y: clearanceLift(y, dist, speed), z: speed });
+      let prev = world.ballPosition();
+      let crossing: number | null = null;
+      for (let i = 0; i < 3 * TICK_RATE && crossing === null; i++) {
+        world.step();
+        const p = world.ballPosition();
+        if (prev.z < 0 && p.z >= 0) crossing = prev.y + ((p.y - prev.y) * -prev.z) / (p.z - prev.z);
+        prev = p;
+      }
+      expect(crossing).not.toBeNull();
+      expect(Math.abs(crossing! - (COURT.netHeight + SHOT.netClearance))).toBeLessThan(0.03);
+    }
+  }, 15_000);
 });

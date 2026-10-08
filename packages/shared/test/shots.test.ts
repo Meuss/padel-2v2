@@ -156,12 +156,32 @@ describe("net clearance", () => {
     return y + v.y * t - 0.5 * GRAVITY * t * t;
   };
 
-  it("clearanceLift passes the net plane at netHeight + netClearance, allowing for drag", () => {
-    const vy = clearanceLift(0.4, 9, 12.5);
-    // The drag allowance is first order: within a couple of centimetres of the exact decay.
-    expect(heightWithDrag(0.4, { y: vy, z: 12.5 }, 9)).toBeCloseTo(COURT.netHeight + SHOT.netClearance, 1);
+  /** Height when it has travelled dist along z, under exact linear drag (dv/dt = -c·v - g·ŷ) on both axes. */
+  const heightExact = (y: number, v: { y: number; z: number }, dist: number) => {
+    const c = SHOT.dragAllowance;
+    const t = -Math.log(1 - (c * dist) / v.z) / c;
+    const e = (1 - Math.exp(-c * t)) / c;
+    return y + (v.y + GRAVITY / c) * e - (GRAVITY * t) / c;
+  };
+
+  it("clearanceLift passes the net plane at netHeight + netClearance under exact linear drag", () => {
+    for (const [y, dist, speed] of [
+      [0.4, 9, 12.5],
+      [0.2, 9.5, 8.5],
+      [1.1, 4, 10],
+    ] as const) {
+      const vy = clearanceLift(y, dist, speed);
+      expect(heightExact(y, { y: vy, z: speed }, dist)).toBeCloseTo(COURT.netHeight + SHOT.netClearance, 6);
+    }
     // Drag slows the ball, so it needs more lift than drag-free ballistics say.
+    const vy = clearanceLift(0.4, 9, 12.5);
     expect(heightAt(0.4, { y: vy, z: 12.5 }, 9)).toBeGreaterThan(COURT.netHeight + SHOT.netClearance);
+  });
+
+  it("clearanceLift stays finite when the ball could never reach the net (capped flight time)", () => {
+    const vy = clearanceLift(0.4, 9, 1);
+    expect(Number.isFinite(vy)).toBe(true);
+    expect(vy).toBeGreaterThan(0);
   });
 
   it("clearanceLift takes an optional clearance", () => {
