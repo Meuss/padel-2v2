@@ -5,6 +5,7 @@
  */
 import { PLAYER, REACTIONS, type Slot, type Team } from "@padel/shared";
 import { blurAfterClick } from "./button.js";
+import { nameTagText } from "./copy.js";
 
 /** World to screen, as the scene projects it. */
 export type Project = (x: number, y: number, z: number) => { x: number; y: number; visible: boolean };
@@ -20,8 +21,8 @@ export class NameTags {
   constructor(
     private readonly root: HTMLElement,
     private readonly project: Project,
-    /** The seated player's name and team, or undefined for a seat no one holds. */
-    private readonly nameOf: (slot: Slot) => { name: string; team: Team } | undefined,
+    /** The seated player's name, team and kind, or undefined for a seat no one holds. */
+    private readonly nameOf: (slot: Slot) => { name: string; team: Team; isBot: boolean } | undefined,
   ) {}
 
   /** Name tags show between points only: they fade out when a rally starts. */
@@ -43,7 +44,7 @@ export class NameTags {
       this.root.appendChild(el);
       this.tags.set(slot, el);
     }
-    el.textContent = info.name;
+    el.textContent = nameTagText(info.name, info.isBot);
     const p = this.project(x, PLAYER.height + 0.55, z);
     if (p.visible) {
       el.style.display = "block";

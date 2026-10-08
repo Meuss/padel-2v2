@@ -15,11 +15,13 @@ const STAND_GAP = 3; // metres between the cage and the first tier
 const TIERS = 6;
 const TIER_RISE = 0.45;
 const TIER_DEPTH = 0.8;
-const TIER_BASE = 1.0; // the front tier stands just above the LED ribbon
+const TIER_BASE = 1.0; // height of the front tier
 const SEAT_PITCH = 0.7;
 const EMPTY_SEATS = 0.15;
 const LOW_CROWD = 0.4;
-const RIBBON_H = 0.9;
+const RIBBON_H = 0.7;
+/** The ribbon runs this far inside the cage plane, in front of the posts' court-side faces (posts are 0.1 m). */
+const RIBBON_INSET = 0.08;
 const RIBBON_REPEAT_M = RIBBON_H * (BOARD_W / BOARD_H); // keep the canvas aspect
 const RIBBON_SPEED = 1.4; // metres per second
 /** Height of the floodlight heads: just over the back row, so they sit in the top edge of both camera views. */
@@ -340,8 +342,9 @@ export class Arena {
   }
 
   /**
-   * The LED ribbon at the foot of the stands: one inward-facing quad per side,
-   * with U running continuously around the bowl so one texture tiles it all.
+   * The LED ribbon at the foot of the cage, on its court side: one inward-facing quad per side,
+   * with U running continuously around the court so one texture tiles it all. It runs in front of
+   * the cage posts, so no post cuts its text; the camera's own end shows only its back (culled).
    */
   private addRibbon(scene: THREE.Scene, sides: Side[]): void {
     const pos: number[] = [];
@@ -351,16 +354,17 @@ export class Arena {
     const y0 = 0.05;
     const y1 = y0 + RIBBON_H;
     for (const side of sides) {
-      const dist = side.cage + STAND_GAP - 0.02;
+      const dist = side.cage - RIBBON_INSET;
+      const half = side.half - STAND_GAP - RIBBON_INSET;
       // Looking outward from the court, "right" is out × up.
       const right = new THREE.Vector2(-side.out.y, side.out.x);
       const cx = side.out.x * dist;
       const cz = side.out.y * dist;
-      const ax = cx - right.x * side.half;
-      const az = cz - right.y * side.half;
-      const bx = cx + right.x * side.half;
-      const bz = cz + right.y * side.half;
-      const u1 = u + (2 * side.half) / RIBBON_REPEAT_M;
+      const ax = cx - right.x * half;
+      const az = cz - right.y * half;
+      const bx = cx + right.x * half;
+      const bz = cz + right.y * half;
+      const u1 = u + (2 * half) / RIBBON_REPEAT_M;
       const b = pos.length / 3;
       pos.push(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az);
       uv.push(u, 0, u1, 0, u1, 1, u, 1);

@@ -99,3 +99,17 @@ export function servePrompt(
   if (m.serverSlot === selfSlot) return { text: m.tossing ? "Click to serve" : "Press Space to toss" };
   return { server: m.serverSlot };
 }
+
+/** The longest name tag, in characters; a longer one ends in an ellipsis. */
+export const NAME_TAG_MAX = 12;
+
+/**
+ * A name tag's short display name: a Bot's surname uppercased ("Bot Stan Wawrinka" → "WAWRINKA"),
+ * a person's nickname as typed; either cut to NAME_TAG_MAX characters with an ellipsis. Pure.
+ */
+export function nameTagText(name: string, isBot: boolean): string {
+  const words = name.trim().split(/\s+/);
+  const short = isBot ? (words.length > 1 ? words[words.length - 1]! : (words[0] ?? "")).toUpperCase() : name.trim();
+  const chars = Array.from(short);
+  return chars.length > NAME_TAG_MAX ? `${chars.slice(0, NAME_TAG_MAX - 1).join("")}…` : short;
+}

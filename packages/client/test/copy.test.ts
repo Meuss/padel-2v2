@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerFor, scoreCall, servePrompt, teamLabel } from "../src/hud/copy.js";
+import { bannerFor, NAME_TAG_MAX, nameTagText, scoreCall, servePrompt, teamLabel } from "../src/hud/copy.js";
 
 describe("teamLabel", () => {
   it("names team A AZUL and team B ROJO", () => {
@@ -139,5 +139,26 @@ describe("servePrompt", () => {
   it("is hidden once the serve is struck, and before any match state", () => {
     expect(servePrompt({ ...serve, phase: "rally", awaitingServe: false }, "player", "A1", false)).toBeNull();
     expect(servePrompt(null, "player", "A1", true)).toBeNull();
+  });
+});
+
+describe("nameTagText", () => {
+  it("shows a Bot's surname, uppercased", () => {
+    expect(nameTagText("Bot Stan Wawrinka", true)).toBe("WAWRINKA");
+    expect(nameTagText("Bot Mr Bean", true)).toBe("BEAN");
+    expect(nameTagText("Bot Monsieur Léman", true)).toBe("LÉMAN");
+    expect(nameTagText("Bot Heidi", true)).toBe("HEIDI");
+  });
+
+  it("shows a person's nickname as typed", () => {
+    expect(nameTagText("Thomas", false)).toBe("Thomas");
+    expect(nameTagText("Bot Fan", false)).toBe("Bot Fan");
+  });
+
+  it("cuts a long name with an ellipsis, at NAME_TAG_MAX characters", () => {
+    expect(nameTagText("Bot Fribourg-Gottéron", true)).toBe("FRIBOURG-GO…");
+    expect(nameTagText("Bot Fribourg-Gottéron", true)).toHaveLength(NAME_TAG_MAX);
+    expect(nameTagText("Supercalifragilistic", false)).toBe("Supercalifr…");
+    expect(nameTagText("Twelve chars", false)).toBe("Twelve chars");
   });
 });

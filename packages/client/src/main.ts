@@ -120,7 +120,7 @@ function selfLocked(): boolean {
   return match !== null && match.phase === "serve" && match.serverSlot === selfSlot;
 }
 let lastHighlightKey: string | null = null;
-const names = new Map<Slot, { name: string; team: Team }>();
+const names = new Map<Slot, { name: string; team: Team; isBot: boolean }>();
 
 /** Connection indicator, top-left: shown only while the socket is not open. */
 function renderConn(status: ConnStatus): void {
@@ -586,7 +586,7 @@ const net = new Net({
     renderTakeSeat(msg.seatOpen);
     names.clear();
     for (const p of msg.players) {
-      names.set(p.slot, { name: p.name, team: p.team });
+      names.set(p.slot, { name: p.name, team: p.team, isBot: p.isBot });
       scene.setPlayerName(p.slot, p.name);
     }
     renderServePrompt();
