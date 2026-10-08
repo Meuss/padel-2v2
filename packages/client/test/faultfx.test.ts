@@ -47,6 +47,11 @@ describe("faultTimeline", () => {
     expect(actions(fx)).toEqual(["ring0", "pulse0"]);
   });
 
+  it("a ball that came back over the net (points either side of it): a single mark, no arc", () => {
+    const back: FaultFx = { kind: "ground", surface: "floor", points: [p(1, -2), p(1.2, 1.5)] };
+    expect(actions(back)).toEqual(["ring0", "pulse0"]);
+  });
+
   it("net: the ghost and the tape sweep start together, then the ripple and its pulse", () => {
     expect(actions(NET)).toEqual(["ghost0", "sweep0", "ring0", "pulse0"]);
     expect(at(NET, "ghost")).toBe(0);
@@ -150,6 +155,17 @@ describe("FaultFxPlayer", () => {
     fx.stop();
     fx.update(1);
     expect(visible(fx.root)).toBe(0);
+  });
+
+  it("marks a ball that came back over the net once, on its last bounce, with no arc", () => {
+    const scene = new THREE.Scene();
+    const fx = new FaultFxPlayer(scene);
+    fx.play({ kind: "ground", surface: "floor", points: [p(1, -2), p(1.2, 1.5)] }, 0);
+    fx.update(0.6);
+    expect(fx.root.getObjectByName("fault-arc")!.visible).toBe(false);
+    const rings = fx.root.children.filter((o) => (o as THREE.Mesh).geometry instanceof THREE.RingGeometry && o.visible);
+    expect(rings.length).toBeGreaterThan(0);
+    expect(rings[0]!.position.z).toBeCloseTo(1.5);
   });
 
   it("a new fault replaces the last one", () => {

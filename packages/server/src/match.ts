@@ -529,7 +529,8 @@ export class MatchEngine {
               points: [this.netPoint(c.pos)],
             });
           }
-          return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", this.doubleBounce(c.pos));
+          // Over to the receivers and back again: they never returned it.
+          return this.endPoint(now, this.hitterTeam!, "NOT RETURNED", this.doubleBounce(c.pos));
         }
       } else if (isWall(kind)) {
         if (s === target && this.crossed && !this.bouncedTarget) {

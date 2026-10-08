@@ -170,3 +170,18 @@ describe("serve reclassifications", () => {
     expect(msg.highlight).toMatchObject({ kind: "out", surface: "floor" });
   });
 });
+
+describe("a ball that comes back over the net", () => {
+  it("bounced on the receivers' side, then back on the hitter's: NOT RETURNED, to the hitter", () => {
+    // B returned the serve: B (z > 0) is the hitter, A's half (z < 0) the target.
+    const { engine, now } = rallyAfterReturn();
+    const first = { x: 1, y: 0.07, z: -2 };
+    const back = { x: 1.2, y: 0.07, z: 1.5 };
+    engine.tick(now + TICK_MS, first, 5, [{ kind: "floor", pos: first }]);
+    engine.tick(now + 2 * TICK_MS, back, 5, [{ kind: "floor", pos: back }]);
+    const msg = engine.toMessage();
+    expect(msg.reason).toBe("NOT RETURNED");
+    expect(msg.eventTeam).toBe("B");
+    expect(msg.highlight).toMatchObject({ kind: "ground", points: [first, back] });
+  });
+});

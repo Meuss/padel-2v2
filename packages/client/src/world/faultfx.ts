@@ -3,7 +3,8 @@
  * positions the server recorded (`FaultHighlight.points`).
  *
  *   Double bounce   numbered impact marks on the turf, 250 ms apart, a dashed arc between
- *                   them, and a red pulse on bounce 2.
+ *                   them, and a red pulse on bounce 2. A ball that came back over the net
+ *                   (its two points either side of it) gets a single mark on its last bounce.
  *   Net             the net's top tape lights from the contact outward, a ripple on the net
  *                   at the contact, and the ball's ghost hanging there for 0.6 s.
  *   Out             a ring at the exit point (on the cage plane, or flat where it landed), an
@@ -73,6 +74,13 @@ const STOP_MS = 220;
 const HALF_W = COURT.width / 2;
 const HALF_L = COURT.length / 2;
 
+/** A ground fault whose two bounces lie either side of the net (not returned): marked once. Pure. */
+export function straddlesNet(fx: FaultFx): boolean {
+  const a = fx.points[0];
+  const b = fx.points[1];
+  return fx.kind === "ground" && a !== undefined && b !== undefined && Math.sign(a.z) !== Math.sign(b.z);
+}
+
 /** The ordered cues of a fault's animation. Pure. */
 export function faultTimeline(fx: FaultFx): FaultCue[] {
   const n = fx.points.length;
@@ -82,7 +90,7 @@ export function faultTimeline(fx: FaultFx): FaultCue[] {
   if (fx.box) cue(0, "box");
   switch (fx.kind) {
     case "ground":
-      if (n >= 2) {
+      if (n >= 2 && !straddlesNet(fx)) {
         cue(0, "ring", 0);
         cue(CUE.labelLag, "label", 0);
         cue(CUE.arc, "arc");
@@ -694,7 +702,10 @@ export class FaultFxPlayer {
     const p1 = fx.points[1];
     switch (fx.kind) {
       case "ground":
-        if (p1) {
+        if (straddlesNet(fx)) {
+          this.ringFlat(0, p1!, LOOK.bounceR, ROJO);
+          this.pulseFrom(0);
+        } else if (p1) {
           this.ringFlat(0, p0, LOOK.bounceR, WHITE_GLOW);
           this.ringFlat(1, p1, LOOK.bounceR, ROJO);
           // The numbers stand beside their marks, off the arc's path.
