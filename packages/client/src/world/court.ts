@@ -52,7 +52,10 @@ function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return g;
 }
 
-/** Fine grayscale noise that breaks up the flat turf colour into artificial grass. */
+/**
+ * Grayscale grain that breaks up the flat turf colour into artificial grass: per-pixel fibre
+ * noise, then two soft octaves of mottling (multiplied) so the grain survives the mipmaps.
+ */
 function turfTexture(quality: Quality): THREE.CanvasTexture {
   const s = 512;
   const canvas = document.createElement("canvas");
@@ -72,6 +75,21 @@ function turfTexture(quality: Quality): THREE.CanvasTexture {
     img.data[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
+  ctx.globalCompositeOperation = "multiply";
+  ctx.imageSmoothingEnabled = true;
+  for (const cells of [32, 128]) {
+    const octave = document.createElement("canvas");
+    octave.width = octave.height = cells;
+    const octx = octave.getContext("2d")!;
+    const o = octx.createImageData(cells, cells);
+    for (let i = 0; i < cells * cells; i++) {
+      const v = 226 + Math.floor(rand() * 30);
+      o.data[i * 4] = o.data[i * 4 + 1] = o.data[i * 4 + 2] = v;
+      o.data[i * 4 + 3] = 255;
+    }
+    octx.putImageData(o, 0, 0);
+    ctx.drawImage(octave, 0, 0, s, s);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;

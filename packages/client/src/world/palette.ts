@@ -1,7 +1,8 @@
 /** Pro Tour Broadcast palette, taken from the approved comp. Single source of colour for the world. */
 export const PALETTE = {
-  turf: "#2a5fc4",
-  surround: "#173a7a",
+  /** Cerulean, as in the comp: it renders about rgb(70, 135, 200) under the floodlights. */
+  turf: "#2c7cc6",
+  surround: "#184a82",
   lines: "#f4f7ff",
   steel: "#0d1016",
   /** Wire of the cage's mesh: dark galvanised metal, a shade lighter than the black steel frame. */

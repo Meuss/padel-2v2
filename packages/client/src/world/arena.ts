@@ -31,8 +31,8 @@ const IDLE_STEP_SEC = 0.1; // idle breathing at 10 Hz
 // Muted mid-low shirts: the crowd reads as a mass of people from the Player cam,
 // still well below the bright court.
 const CROWD_COLORS = ["#2b3a5c", "#3a4a6e", "#45474f", "#6a3236", "#565a63", "#33363d", "#2f4c80", "#6b5a3e"];
-/** Lambert multiplier on every shirt: keeps the crowd back even under the key light. */
-const CROWD_DIM = "#c8c8c8";
+/** Lambert multiplier on every shirt: the crowd sits in the dark, so the court is the only floodlit surface. */
+const CROWD_DIM = "#5a5a5a";
 /** How high (m) the crowd jumps on a full-intensity cheer. */
 const CHEER_JUMP_M = 0.42;
 /** Emissive lift on the crowd at the peak of a full-intensity cheer (flashes, raised arms). */

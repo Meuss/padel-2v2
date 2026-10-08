@@ -174,7 +174,8 @@ const LOOK = {
   ringGrowMs: 450,
   pulseMs: 700,
   pulseGrow: 1.5,
-  /** The soft disc under a ring, relative to its radius. */
+  /** The soft disc under a white ring, relative to its radius. Red rings get none: red at low
+   *  opacity over the blue turf reads magenta. */
   discScale: 2.6,
   discOpacity: 0.3,
   labelY: 0.42,
@@ -512,6 +513,8 @@ export class FaultFxPlayer {
   private rings: BasicMesh<THREE.RingGeometry>[];
   private discs: BasicMesh<THREE.PlaneGeometry>[];
   private ringR = [1, 1, 1];
+  /** Whether ring i (0, 1) shows its soft disc: white rings only. */
+  private discOn = [true, true];
   private labels: THREE.Sprite[];
   private labelY = [0, 0];
   private ribbon: Ribbon;
@@ -549,9 +552,11 @@ export class FaultFxPlayer {
     const discTex = canvasTexture(discCtx);
 
     const ringGeo = new THREE.RingGeometry(0.86, 1, 72);
+    // The pulse is a thin stroke that stays nearly opaque while it grows, so it reads red, not magenta.
+    const pulseGeo = new THREE.RingGeometry(0.95, 1, 72);
     const discGeo = new THREE.PlaneGeometry(LOOK.discScale, LOOK.discScale);
     this.rings = [0, 1, 2].map((i) => {
-      const m = new THREE.Mesh(ringGeo, markMaterial());
+      const m = new THREE.Mesh(i === 2 ? pulseGeo : ringGeo, markMaterial());
       m.name = i === 2 ? "fault-pulse" : "fault-ring";
       m.renderOrder = 6;
       return m;
@@ -826,7 +831,10 @@ export class FaultFxPlayer {
   private setRing(i: number, r: number, color: THREE.Color): void {
     this.ringR[i] = r;
     this.rings[i]!.material.color.copy(color);
-    if (i < 2) this.discs[i]!.material.color.copy(color);
+    if (i < 2) {
+      this.discs[i]!.material.color.copy(color);
+      this.discOn[i] = !color.equals(ROJO);
+    }
   }
 
   private ringFlat(i: number, p: Vec3, r: number, color: THREE.Color): void {
@@ -891,7 +899,11 @@ export class FaultFxPlayer {
         const grow = this.reduced ? 1 : LOOK.ringFrom + (1 - LOOK.ringFrom) * easeOutExpo(since / LOOK.ringGrowMs);
         ring.scale.setScalar(this.ringR[i]! * grow);
         ring.material.opacity = a;
-        if (i < 2) this.discs[i]!.material.opacity = a * LOOK.discOpacity;
+        if (i < 2) {
+          const disc = this.discs[i]!;
+          disc.visible = this.discOn[i]!;
+          disc.material.opacity = a * LOOK.discOpacity;
+        }
         return;
       }
       case "pulse": {
@@ -900,7 +912,7 @@ export class FaultFxPlayer {
         pulse.visible = !this.reduced && a > 0 && x < 1;
         if (!pulse.visible) return;
         pulse.scale.setScalar(this.ringR[2]! * (1 + LOOK.pulseGrow * easeOutCubic(x)));
-        pulse.material.opacity = a * (1 - x) * (1 - x) * 0.9;
+        pulse.material.opacity = a * (1 - x * x * x);
         return;
       }
       case "label": {
