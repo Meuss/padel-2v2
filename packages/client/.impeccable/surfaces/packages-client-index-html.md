@@ -18,3 +18,11 @@ FORM: Pro Tour Broadcast (category standard, executed straight); seed 9028b766.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
 Approved comp: docs/design/v2-comp-clean-feed.png (between points: docs/design/v2-comp-between-points.png).
+
+## Build verification
+The WebGL scene (arena, court, avatars, fault FX) is code-led: it was built and checked in code, through `pnpm shoot` renders of the real build, not from raster plates. HUD fidelity was measured with `impeccable comp-diff` on matching crops (comp versus a fresh render at the comp's frame size), in place of the build-phase plates and hero gates:
+- score bug: 61% (drift); residue is score content, the contract navy and the ruled 700 weight. Report: .impeccable/review/diff/bug/report.json
+- Banner: 78% (drift), no region contradicted. Report: .impeccable/review/diff/banner/report.json
+- join panel: 81% (match); band-1 "missing" is the kicker removed on purpose. Report: .impeccable/review/diff/join/report.json
+
+Crops: .impeccable/review/diff/crops/. Fix log: .superpowers/sdd/2026-10-08-v2-stage5-polish/finish-fix-report.md
