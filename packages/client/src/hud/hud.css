@@ -234,9 +234,9 @@
   left: 4.9vw;
   bottom: 4.6vh;
   width: 18.2vw;
-  min-width: 260px;
+  min-width: 240px;
   background: var(--bug-navy);
-  border: var(--sb-rule-w) solid rgba(244, 247, 255, 0.38);
+  border: var(--sb-rule-w) solid rgba(244, 247, 255, 0.55);
   pointer-events: none;
   user-select: none;
 }
@@ -445,8 +445,8 @@
 
 /*
  * Comp 3 at 1376×768: the band spans 918 px (66.7vw), centred, its bottom 52 px (6.8vh) up.
- * An optic rule (0.6vh) over a navy title band (10.4vh, caps 6.5vh tall), a hairline, then a
- * navy sub band (6.5vh, caps 3.4vh tall). Square corners, flat navy, no shadow.
+ * An optic rule (0.6vh) over a navy title band (10.8vh, caps 6.5vh tall), a hairline, then a
+ * navy sub band (6.8vh, caps 3.4vh tall). Square corners, flat navy, no shadow.
  */
 #banner {
   --bn-accent: var(--optic);
@@ -456,7 +456,7 @@
   width: 66.7vw;
   translate: -50% 0;
   display: grid;
-  grid-template-rows: auto 10.4vh auto;
+  grid-template-rows: auto 10.8vh auto;
   background: var(--bug-navy);
   color: var(--bug-white);
   font-family: var(--font-broadcast);
@@ -515,7 +515,7 @@
   letter-spacing: 0.01em;
 }
 .bn-sub {
-  height: 6.5vh;
+  height: 6.8vh;
   padding-top: 0.08em;
   border-top: 1px solid rgba(244, 247, 255, 0.26);
   font-family: var(--font-graphic);
@@ -1421,8 +1421,8 @@ body.final-up #ctl-legend,
   display: none;
   justify-content: flex-end;
   align-items: center;
-  /* The comp sits the column a little below centre. */
-  padding: calc(1.4 * var(--ju)) max(16px, 4.6 * var(--ju)) 0 0;
+  /* The comp sits the column a little below centre: the wordmark's top at 128 of 893. */
+  padding: calc(4 * var(--ju)) max(16px, 4.6 * var(--ju)) 0 0;
   /* The arena stays sharp on the left; navy closes in from ~55%, solid behind the column. */
   background: linear-gradient(
     90deg,
