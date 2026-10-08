@@ -64,6 +64,11 @@ export function legendRows(role: Role): ControlRow[] {
   return role === "player" ? [DRIVE, LOB, { keys: ["SPACE"], label: "Serve" }] : [];
 }
 
+/** Closing the card counts as "seen" only for the Player card: a Spectator still gets it on taking a seat. Pure. */
+export function persistSeenOnClose(role: Role): boolean {
+  return role === "player";
+}
+
 /** The card opens by itself once, for a Player who has not closed it before. Pure. */
 export function shouldShowCard(seen: boolean, role: Role): boolean {
   return role === "player" && !seen;
@@ -138,6 +143,11 @@ export class ControlsCard {
     return this.open;
   }
 
+  /** The role the card was last drawn for. */
+  get shownRole(): Role | null {
+    return this.role;
+  }
+
   show(role: Role): void {
     if (role !== this.role) this.build(role);
     this.open = true;
@@ -152,7 +162,10 @@ export class ControlsCard {
   private build(role: Role): void {
     this.role = role;
     const { move, hit, other } = controlRows(role);
-    const parts: HTMLElement[] = [div("ct-head", "Controls")];
+    const head = document.createElement("h2");
+    head.className = "ct-head";
+    head.textContent = "Controls";
+    const parts: HTMLElement[] = [head];
 
     if (move.length > 0 || hit.length > 0) {
       const moveCol = div("ct-col ct-move");

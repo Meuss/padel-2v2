@@ -34,7 +34,7 @@ import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
-import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, shouldShowCard } from "./hud/controls.js";
+import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
   isNotable,
@@ -179,6 +179,8 @@ const ctlLegend = document.getElementById("ctl-legend")!;
 const controlsLegend = new ControlsLegend(ctlLegend, toggleControls);
 /** The match phase last seen while the card is up: a serve → rally step is a serve going in. */
 let controlsPhase: MatchPhase | null = null;
+/** The first-time card waits while the Final card is up (or due), and opens when it closes. */
+let controlsPending = false;
 
 function openControls(): void {
   controlsPhase = null;
@@ -191,7 +193,8 @@ function closeControls(): void {
   if (!controlsCard.showing) return;
   controlsCard.hide();
   controlsLegend.setExpanded(false);
-  if (controlsSeen) return;
+  const shown = controlsCard.shownRole;
+  if (controlsSeen || !shown || !persistSeenOnClose(shown)) return;
   controlsSeen = true;
   try {
     localStorage.setItem(CONTROLS_SEEN_KEY, "1");
@@ -209,8 +212,27 @@ function toggleControls(): void {
 function renderControls(): void {
   controlsLegend.render(role);
   ctlLegend.classList.add("show");
+  ctlLegend.classList.toggle("spectator", role === "spectator");
+  controlsPending = false;
+  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && devControls)) {
+    if (finalCard.showing || finalDueAt !== null) controlsPending = true;
+    else openControls();
+  } else if (controlsCard.showing) controlsCard.show(role); // redrawn for a new role
+}
+
+/** The Final card is opening: a first-time card already up (we joined just as the match ended) steps back until it closes. */
+function deferControls(): void {
+  if (!controlsCard.showing || controlsSeen || role !== "player") return;
+  controlsCard.hide();
+  controlsLegend.setExpanded(false);
+  controlsPending = true;
+}
+
+/** The Final card closed: the deferred first-time card opens now. */
+function openPendingControls(): void {
+  if (!controlsPending) return;
+  controlsPending = false;
   if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && devControls)) openControls();
-  else if (controlsCard.showing) controlsCard.show(role); // redrawn for a new role
 }
 
 /** On each match update: the card goes away once a serve goes in, and the legend dims for the rally. */
@@ -449,6 +471,7 @@ function updateFinal(): void {
     finalCardShowing = false;
     document.body.classList.remove("final-up");
   }
+  openPendingControls();
 }
 
 /** Once per frame: show the due Final card once the director is back to live; it replaces the Set Banner. */
@@ -459,6 +482,7 @@ function tickFinal(now: number): void {
   if (!model) return;
   finalCard.show(model);
   finalCardShowing = true;
+  deferControls();
   bannerQueue.clear();
   document.body.classList.add("final-up");
   renderVote();
@@ -546,6 +570,7 @@ function dropEvents(): void {}
 const net = new Net({
   onStatus: (s) => {
     renderConn(s);
+    if (s !== "open") document.body.classList.remove("in-rally");
     if (s === "closed") hideLoading();
     else showLoading(s);
   },
@@ -658,7 +683,10 @@ function showNickname(message = ""): void {
   nickname.style.display = "flex";
   resetbtn.classList.remove("show");
   controlsCard.hide();
+  controlsPending = false;
+  controlsLegend.setExpanded(false);
   ctlLegend.classList.remove("show");
+  document.body.classList.remove("in-rally");
   vote = null;
   renderVote();
   nickInput.focus();

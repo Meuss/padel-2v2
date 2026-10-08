@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { controlRows, legendRows, shouldShowCard } from "../src/hud/controls.js";
+import { controlRows, legendRows, persistSeenOnClose, shouldShowCard } from "../src/hud/controls.js";
 
 const keysOf = (rows: { keys: string[] }[]) => rows.map((r) => r.keys.join("+"));
 
@@ -42,6 +42,16 @@ describe("legendRows", () => {
 
   it("shows a Spectator nothing beside the ? key", () => {
     expect(legendRows("spectator")).toEqual([]);
+  });
+});
+
+describe("persistSeenOnClose", () => {
+  it("remembers a closed Player card", () => {
+    expect(persistSeenOnClose("player")).toBe(true);
+  });
+
+  it("does not let a closed Spectator card use up the first-time Player card", () => {
+    expect(persistSeenOnClose("spectator")).toBe(false);
   });
 });
 

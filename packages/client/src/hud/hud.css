@@ -1390,6 +1390,10 @@ body.final-up #labels {
 body.in-rally #ctl-legend {
   opacity: 0.55;
 }
+/* A Spectator's lone "?" would vanish at 0.55 over the dark stands. */
+body.in-rally #ctl-legend.spectator {
+  opacity: 0.7;
+}
 body.banner-up #ctl-legend,
 body.final-up #ctl-legend,
 #votepanel.show ~ #ctl-legend {
