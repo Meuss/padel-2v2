@@ -15,6 +15,12 @@ export function roomLine(roster: { players: readonly { isBot: boolean }[]; spect
   return `${playing} playing · ${roster.spectatorCount} watching`;
 }
 
+/** The field's cap: 16 code points, like the server's (maxlength would count UTF-16 units). Pure. */
+export function capName(value: string): string {
+  const points = Array.from(value);
+  return points.length > NAME_MAX_LENGTH ? points.slice(0, NAME_MAX_LENGTH).join("") : value;
+}
+
 /** "7/16": counted by code point, like the server's cap, so an emoji counts once. */
 export function nameCount(value: string): string {
   return `${Array.from(value).length}/${NAME_MAX_LENGTH}`;

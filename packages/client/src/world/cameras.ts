@@ -117,3 +117,12 @@ export class CameraRig {
 export function cutawaySide(cameraZ: number): -1 | 1 {
   return cameraZ < 0 ? -1 : 1;
 }
+
+/** Time constant of the sideways frame shift: ~95% of the way in 250 ms. */
+const FRAME_SHIFT_TAU = 0.08;
+
+/** One frame of the frame shift's ease toward its target (exponential, frame-rate independent). Pure. */
+export function stepFrameShift(current: number, target: number, dt: number): number {
+  const next = target + (current - target) * Math.exp(-dt / FRAME_SHIFT_TAU);
+  return Math.abs(next - target) < 0.0005 ? target : next;
+}

@@ -35,7 +35,7 @@ import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
-import { fillJoinLegend, nameCount, roomLine } from "./hud/join.js";
+import { capName, fillJoinLegend, nameCount, roomLine } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
@@ -526,14 +526,19 @@ function renderRoom(roster: { players: readonly { isBot: boolean }[]; spectatorC
   joinRoom.textContent = roomLine(roster);
 }
 
-function renderNickCount(): void {
-  nickCount.textContent = nameCount(nickInput.value);
-  nickCount.classList.toggle("full", Array.from(nickInput.value).length >= NAME_MAX_LENGTH);
+/** Holds the field to 16 code points (an emoji counts once), then updates the counter. */
+function onNickInput(): void {
+  const capped = capName(nickInput.value);
+  if (capped !== nickInput.value) nickInput.value = capped;
+  nickCount.textContent = nameCount(capped);
+  nickCount.classList.toggle("full", Array.from(capped).length >= NAME_MAX_LENGTH);
 }
 
 function showLoading(status: ConnStatus): void {
   // Only relevant once the player has chosen to connect (the form is dismissed).
   if (joinAsking()) return;
+  // Once in, a dropped socket stays on the live view: the #conn chip says "Reconnecting…".
+  if (joined) return;
   loadingTitle.textContent =
     status === "reconnecting" ? "Reconnecting…" : "Waking up the server…";
   loadingHint.textContent =
@@ -716,6 +721,9 @@ const net = new Net({
 
 function showNickname(message = ""): void {
   hideLoading();
+  // Kicked: the next PLAY is a fresh join, with the loading state.
+  joined = false;
+  renderTakeSeat(lastSeatOpen);
   nickMsg.textContent = message;
   // The socket is closed: the last roster is stale.
   renderRoom(null);
@@ -759,7 +767,7 @@ joinForm.addEventListener("submit", (e) => {
   e.preventDefault();
   play();
 });
-nickInput.addEventListener("input", renderNickCount);
+nickInput.addEventListener("input", onNickInput);
 resetbtn.addEventListener("click", (e) => {
   acceptVote();
   // After a mouse click, give Space back to the serve toss; keyboard users keep focus.

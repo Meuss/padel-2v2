@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nameCount, roomLine } from "../src/hud/join.js";
+import { capName, nameCount, roomLine } from "../src/hud/join.js";
 
 const human = { isBot: false };
 const bot = { isBot: true };
@@ -31,5 +31,22 @@ describe("nameCount", () => {
 
   it("counts an emoji once, as the server's cap does", () => {
     expect(nameCount("Ana 🎾")).toBe("5/16");
+  });
+});
+
+describe("capName", () => {
+  it("keeps a name of 16 code points or fewer as typed", () => {
+    expect(capName("Shooter")).toBe("Shooter");
+    expect(capName("ABCDEFGHIJKLMNOP")).toBe("ABCDEFGHIJKLMNOP");
+  });
+
+  it("cuts at 16 code points", () => {
+    expect(capName("ABCDEFGHIJKLMNOPQR")).toBe("ABCDEFGHIJKLMNOP");
+  });
+
+  it("allows 16 emoji (32 UTF-16 units) and never splits one", () => {
+    const sixteen = "🎾".repeat(16);
+    expect(capName(sixteen + "🎾")).toBe(sixteen);
+    expect(nameCount(capName(sixteen + "🎾"))).toBe("16/16");
   });
 });

@@ -24,7 +24,7 @@ import {
   type Vec2,
 } from "@padel/shared";
 import { Arena } from "./world/arena.js";
-import { broadcastCamPose, CameraRig, cutawaySide } from "./world/cameras.js";
+import { broadcastCamPose, CameraRig, cutawaySide, stepFrameShift } from "./world/cameras.js";
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js";
@@ -49,8 +49,9 @@ export class PadelScene {
   /** Duration of the frame being built, for avatar speed (set before the frame callback). */
   private frameDt = 1 / 60;
   private court: CourtConfig | null = null;
-  /** Sideways picture shift, a fraction of the width (setFrameShift). */
+  /** Sideways picture shift, a fraction of the width, easing toward its target (setFrameShift). */
   private frameShift = 0;
+  private frameShiftTarget = 0;
   private rig: CameraRig;
   private endWalls: EndWalls | null = null;
   private camTeam: Team = "A";
@@ -387,11 +388,10 @@ export class PadelScene {
   /**
    * Slides the picture left by a fraction of its width, so the court sits in the part of the
    * screen an overlay leaves open (the join screen's panel covers the right); 0 recentres it.
+   * It eases there over ~250 ms (render), so opening or closing the overlay never snaps.
    */
   setFrameShift(fraction: number): void {
-    if (fraction === this.frameShift) return;
-    this.frameShift = fraction;
-    this.applyFrameShift();
+    this.frameShiftTarget = fraction;
   }
 
   private applyFrameShift(): void {
@@ -435,6 +435,10 @@ export class PadelScene {
     this.updateMarkers(now);
     this.rig.addShake(this.feedback.update(dt).shake);
     this.rig.update(dt);
+    if (this.frameShift !== this.frameShiftTarget) {
+      this.frameShift = stepFrameShift(this.frameShift, this.frameShiftTarget, dt);
+      this.applyFrameShift();
+    }
     this.endWalls?.update(cutawaySide(this.rig.cameraZ), dt);
     this.renderer.info.reset();
     if (this.composer) this.composer.render(dt);

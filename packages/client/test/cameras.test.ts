@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { broadcastCamPose, CameraRig, cutawaySide, playerCamPose } from "../src/world/cameras.js";
+import { broadcastCamPose, CameraRig, cutawaySide, playerCamPose, stepFrameShift } from "../src/world/cameras.js";
 
 describe("playerCamPose", () => {
   it("sits behind the back glass, high, with a long lens (side -1)", () => {
@@ -172,5 +172,28 @@ describe("CameraRig.addShake", () => {
     a.rig.update(1 / 60);
     b.rig.update(1 / 60);
     expect(b.cam.position.distanceTo(a.cam.position)).toBeLessThan(1e-9);
+  });
+});
+
+describe("stepFrameShift", () => {
+  it("eases toward the target instead of snapping", () => {
+    const next = stepFrameShift(0, 0.2, 1 / 60);
+    expect(next).toBeGreaterThan(0);
+    expect(next).toBeLessThan(0.05);
+  });
+
+  it("is most of the way there after ~250 ms and lands exactly soon after", () => {
+    let s = 0.2;
+    for (let i = 0; i < 15; i++) s = stepFrameShift(s, 0, 1 / 60);
+    expect(s).toBeLessThan(0.02);
+    for (let i = 0; i < 30; i++) s = stepFrameShift(s, 0, 1 / 60);
+    expect(s).toBe(0);
+  });
+
+  it("does not depend on the frame rate", () => {
+    let a = 0;
+    for (let i = 0; i < 6; i++) a = stepFrameShift(a, 0.2, 1 / 60);
+    const b = stepFrameShift(0, 0.2, 6 / 60);
+    expect(a).toBeCloseTo(b, 6);
   });
 });
