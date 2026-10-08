@@ -8,6 +8,7 @@ import {
   faultDuration,
   faultTimeline,
   type FaultFx,
+  outRingY,
 } from "../src/world/faultfx.js";
 
 const p = (x: number, z: number, y = 0.07): Vec3 => ({ x, y, z });
@@ -177,5 +178,16 @@ describe("FaultFxPlayer", () => {
     fx.update(0.3);
     expect(fx.root.getObjectByName("fault-arc")!.visible).toBe(false);
     expect(fx.root.getObjectByName("fault-impact")!.visible).toBe(true);
+  });
+});
+
+describe("outRingY", () => {
+  it("draws the ring where the ball crossed when that is low enough", () => {
+    expect(outRingY(2.5, 4)).toBe(2.5);
+  });
+
+  it("holds a ring over the cage top a radius under it, so it stays on the wall", () => {
+    expect(outRingY(4.15, 4)).toBeCloseTo(3.4);
+    expect(outRingY(9, 3)).toBeCloseTo(2.4);
   });
 });

@@ -23,6 +23,7 @@ import {
   BALL,
   COURT,
   SERVICE_LINE_DIST,
+  cageTopAt,
   netHeightAt,
   type FaultKind,
   type FaultSurface,
@@ -159,6 +160,15 @@ export function faultAlpha(sinceCueMs: number, elapsedMs: number, endMs: number,
   return fadeIn * fadeOut;
 }
 
+/**
+ * Height of the OUT ring for a ball leaving over the cage at `ballY`: where it crossed, but never
+ * above `cageTop` less the ring's radius and a 0.2 m margin, so the whole ring sits on the wall,
+ * clear of the top rail, and in frame. Pure.
+ */
+export function outRingY(ballY: number, cageTop: number): number {
+  return Math.min(ballY, cageTop - LOOK.exitR - 0.2);
+}
+
 // ── Look ─────────────────────────────────────────────────────────────────────
 
 const LOOK = {
@@ -186,6 +196,8 @@ const LOOK = {
   chipH: 0.48,
   chipAbove: 0.78,
   chipBesidePlayerY: 0.9,
+  /** The OUT chip's centre never sits lower than this (m): its bottom clears a standing player's head. */
+  chipMinY: 2.35,
   ghostHoldMs: 600,
   ghostFadeMs: 350,
   arcDrawMs: 380,
@@ -747,7 +759,7 @@ export class FaultFxPlayer {
           out.set(sx, netHeightAt(sx) + 0.015, 0);
         });
         this.sweep.u.uColor.value.copy(ROJO);
-        this.sweep.u.uHalfWidth.value = 0.035;
+        this.sweep.u.uHalfWidth.value = 0.06;
         this.sweep.u.uSharp.value = this.sweep.length / 0.35;
         this.sweep.u.uDash.value = 0;
         break;
@@ -755,13 +767,12 @@ export class FaultFxPlayer {
       case "out": {
         const ring = this.rings[0]!;
         if (p0.y > 0.6) {
-          // Over the cage: the ring stands in the wall's plane where the ball crossed it.
+          // Over the cage: the ring stands in the wall's plane where the ball crossed it, held a
+          // ring's radius under the cage top so it stays in frame (the line still runs from it).
           const back = nearestWallIsBack(p0.x, p0.z);
-          ring.position.set(
-            back ? p0.x : Math.sign(p0.x) * HALF_W,
-            p0.y,
-            back ? Math.sign(p0.z) * HALF_L : p0.z,
-          );
+          const wx = back ? p0.x : Math.sign(p0.x) * HALF_W;
+          const wz = back ? Math.sign(p0.z) * HALF_L : p0.z;
+          ring.position.set(wx, outRingY(p0.y, cageTopAt(wx, wz)), wz);
           faceWall(ring, p0.x, p0.z);
         } else {
           ring.position.set(p0.x, LOOK.turfY, p0.z);
@@ -774,13 +785,15 @@ export class FaultFxPlayer {
           SCRATCH.copy(ring.position);
           if (back) SCRATCH.z -= Math.sign(p0.z) * LOOK.wallOffset;
           else SCRATCH.x -= Math.sign(p0.x) * LOOK.wallOffset;
-          this.chipAt(SCRATCH, ring.position.y - LOOK.exitR - LOOK.chipH / 2 - 0.15, "OUT");
+          this.chipAt(SCRATCH, Math.max(LOOK.chipMinY, ring.position.y - LOOK.exitR - LOOK.chipH / 2 - 0.15), "OUT");
         } else {
-          this.chipAt(ring.position, ring.position.y + LOOK.chipAbove, "OUT");
+          // Above head height, so a player standing there never wears it.
+          this.chipAt(ring.position, Math.max(LOOK.chipMinY, ring.position.y + LOOK.chipAbove), "OUT");
         }
         if (p1) {
           this.ringFlat(1, p1, LOOK.lastBounceR, WHITE_GLOW);
-          const from = ring.position;
+          // From the true crossing point (the ring may be held lower), down to the last bounce.
+          const from = new THREE.Vector3(ring.position.x, p0.y > 0.6 ? p0.y : ring.position.y, ring.position.z);
           this.ribbon.setPath((u, out) => {
             out.set(from.x + (p1.x - from.x) * u, from.y + (LOOK.turfY - from.y) * u, from.z + (p1.z - from.z) * u);
           });
@@ -948,9 +961,10 @@ export class FaultFxPlayer {
         r.u.uTo.value = c + s;
         r.u.uHeadA.value = c - s;
         r.u.uHeadB.value = c + s;
-        r.u.uHot.value = this.reduced ? 0 : 1.4 * (1 - s);
+        // The heads stay hot well past the sweep's reach (still bright at 350–400 ms), then cool.
+        r.u.uHot.value = this.reduced ? 0 : 1.6 * (1 - clamp01(since / (LOOK.sweepMs + 250)));
         // The tape glows, then settles to a dimmer red until the fade.
-        r.u.uOpacity.value = a * (0.95 - 0.35 * s);
+        r.u.uOpacity.value = a * (1 - 0.25 * s);
         return;
       }
       case "chip": {
