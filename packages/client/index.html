@@ -90,6 +90,9 @@
     <button id="takeseat" class="primary-btn" type="button">Take seat</button>
     <div id="votepanel" class="vote" role="region" aria-label="Vote"></div>
     <div id="finalcard"></div>
+    <div id="controls"></div>
+    <!-- After #takeseat and #votepanel: it steps around them with sibling selectors. -->
+    <div id="ctl-legend" role="group" aria-label="Controls"></div>
     <div id="nickname">
       <div class="card">
         <h1>Meuss Padel Club</h1>
@@ -114,9 +117,6 @@
     <div id="scorebug" class="bug-panel"></div>
     <div id="banner"></div>
     <div id="serveprompt" class="bug-panel" role="status" aria-live="polite"></div>
-    <div id="hint">
-      <kbd>WASD</kbd> move<span class="sep">·</span><kbd>Mouse</kbd> aim<span class="sep">·</span><kbd>Click</kbd> Drive<span class="sep">·</span><kbd>Right-click</kbd> Lob<span class="sep">·</span><kbd>Space</kbd> serve<span class="sep">·</span><kbd>E</kbd> react<span class="sep">·</span><kbd>M</kbd> mute<span class="sep">·</span><kbd>B</kbd>/<kbd>N</kbd> add/clear bots
-    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

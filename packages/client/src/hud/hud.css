@@ -226,39 +226,6 @@
   display: none;
 }
 
-/** One quiet line of controls, bottom-centre; fades for good after the first serve or 12 s. */
-#hint {
-  position: fixed;
-  bottom: var(--hud-inset);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100vw - 2 * var(--hud-inset));
-  color: rgba(244, 247, 255, 0.78);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(3, 6, 14, 0.9);
-  pointer-events: none;
-  display: none;
-  opacity: 1;
-  transition: opacity 900ms var(--ease-out);
-}
-#hint.show {
-  display: block;
-}
-#hint.faded {
-  opacity: 0;
-}
-#hint kbd {
-  font-family: inherit;
-  font-weight: 700;
-  color: var(--bug-white);
-}
-#hint .sep {
-  margin: 0 0.6em;
-  opacity: 0.45;
-}
-
 /* ── Score bug, bottom-left (measured from docs/design/v2-comp-clean-feed.png) ── */
 
 #scorebug {
@@ -726,11 +693,10 @@ body.replaying #labels {
   border-bottom-color: var(--rojo);
 }
 
-/* ── Emote tray: a navy strip of the 8 reactions, bottom-centre above the hint (E) ── */
+/* ── Emote tray: a navy strip of the 8 reactions, bottom-centre (E) ── */
 
 :root {
   --tray-img: clamp(40px, 5.6vh, 72px);
-  /* Clear of the one-line hint under it. */
   --tray-bottom: calc(var(--hud-inset) + 1.5 * var(--t-xs) + 8px);
   --tray-h: calc(var(--tray-img) + 3.6vh);
 }
@@ -1120,6 +1086,324 @@ body.final-up #labels {
   }
   .rb-item:hover {
     translate: none;
+  }
+}
+
+/* ── Control glyphs (glyphs.ts): outline keycaps and a mouse, as in the join comp ── */
+
+.glyph {
+  display: block;
+  flex: none;
+  width: auto;
+  height: var(--glyph-h, 22px);
+  overflow: visible;
+}
+/* A key cluster keeps each key the size of a single keycap: 32 viewBox units tall for 22. */
+.glyph-wasd,
+.glyph-arrows {
+  height: calc(var(--glyph-h, 22px) * 32 / 22);
+}
+.glyph-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.glyph-text {
+  fill: currentColor;
+  font-family: var(--font-broadcast);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+/* The button to press. */
+.glyph-hl {
+  fill: var(--optic);
+}
+
+/* ── Controls card: centred above the lower third, first time and on "?" ──── */
+
+#controls {
+  --ct-rule: rgba(244, 247, 255, 0.16);
+  position: fixed;
+  left: 50%;
+  top: 40%;
+  width: 44vw;
+  min-width: 540px;
+  max-width: calc(100vw - 2 * var(--hud-inset));
+  translate: -50% -50%;
+  display: none;
+  background: var(--bug-navy);
+  border: 1px solid rgba(244, 247, 255, 0.38);
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  text-transform: uppercase;
+  line-height: 1;
+  box-shadow: 0 12px 40px rgba(3, 6, 14, 0.55);
+  user-select: none;
+}
+#controls.show {
+  display: block;
+  animation: ct-in 260ms var(--ease-out);
+}
+/* Wipes in left to right, as the Banner and the Final card. */
+@keyframes ct-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.ct-head {
+  display: grid;
+  place-items: center;
+  height: 4.6vh;
+  min-height: 30px;
+  padding-top: 0.08em;
+  background: var(--bug-white);
+  color: var(--bug-ink);
+  font-size: clamp(18px, 3.1vh, 44px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.ct-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: linear-gradient(180deg, #172649 0%, var(--bug-navy) 100%);
+}
+.ct-col {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1.8vh;
+  padding: 2.2vh 1.6vw 2.2vh;
+}
+.ct-col + .ct-col {
+  border-left: 1px solid var(--ct-rule);
+}
+.ct-colhead {
+  color: rgba(244, 247, 255, 0.72);
+  font-size: clamp(14px, 2.2vh, 30px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.ct-move-keys {
+  --glyph-h: clamp(30px, 5vh, 72px);
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+  margin-top: 0.6vh;
+}
+.ct-or {
+  color: rgba(244, 247, 255, 0.6);
+  font-size: clamp(14px, 2.1vh, 30px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.ct-mice {
+  --glyph-h: clamp(36px, 6vh, 86px);
+  display: flex;
+  gap: 2.8vw;
+}
+.ct-fig,
+.ctl-fig {
+  display: grid;
+  justify-items: center;
+}
+.ct-fig {
+  gap: 1vh;
+}
+.ct-fig-label {
+  font-size: clamp(16px, 2.6vh, 38px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.ct-notes {
+  display: grid;
+  justify-items: center;
+  gap: 0.8vh;
+  text-align: center;
+}
+.ct-note {
+  color: rgba(244, 247, 255, 0.78);
+  font-size: clamp(13px, 1.9vh, 28px);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.ct-other {
+  --glyph-h: clamp(22px, 3.2vh, 46px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.4vh 2vw;
+  padding: 2vh 1.8vw 2.2vh;
+  border-top: 1px solid var(--ct-rule);
+}
+.ct-other-single {
+  grid-template-columns: 1fr;
+  border-top: 0;
+}
+.ct-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+  min-width: 0;
+}
+.ct-row-wide {
+  grid-column: 1 / -1;
+}
+.ct-keys {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35vw;
+}
+.ct-slash {
+  color: rgba(244, 247, 255, 0.6);
+  font-size: clamp(14px, 2.2vh, 32px);
+}
+.ct-label {
+  font-size: clamp(15px, 2.4vh, 34px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+/* How to do it, in the serve prompt's own words: SPACE and CLICK keep their caps. */
+.ct-rownote {
+  color: rgba(244, 247, 255, 0.78);
+  font-size: clamp(14px, 2.2vh, 32px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  white-space: nowrap;
+}
+.ct-rownote::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin: 0 0.8em -0.1em 0.2em;
+  background: rgba(244, 247, 255, 0.3);
+}
+/* The real TAKE SEAT button, in miniature. */
+.ct-chip {
+  flex: none;
+  padding: 0.4em 0.7em 0.32em;
+  border: max(1.5px, 0.12vw) solid var(--optic);
+  border-radius: 2px;
+  font-size: clamp(13px, 1.9vh, 28px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.ct-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.4vw;
+  padding: 1.4vh 1.8vw;
+  background: var(--bug-navy-2);
+  border-top: max(2px, 0.3vh) solid var(--optic);
+}
+.ct-again {
+  --glyph-h: clamp(18px, 2.7vh, 38px);
+  display: flex;
+  align-items: center;
+  gap: 0.6vw;
+  color: rgba(244, 247, 255, 0.72);
+  font-size: clamp(13px, 2vh, 28px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.ct-foot .primary-btn {
+  padding: 0.6em 1.8em;
+  font-size: clamp(14px, 2.2vh, 30px);
+}
+
+/* ── Compact controls legend: bottom-right, quiet, always on ──────────────── */
+
+#ctl-legend {
+  --glyph-h: clamp(20px, 3vh, 42px);
+  --ctl-plate: rgba(15, 26, 51, 0.74);
+  position: fixed;
+  right: 4.9vw;
+  bottom: 4.6vh;
+  display: none;
+  align-items: stretch;
+  gap: 0.5vw;
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  text-transform: uppercase;
+  line-height: 1;
+  user-select: none;
+  transition:
+    opacity 240ms var(--ease-out),
+    bottom 160ms var(--ease-out);
+}
+#ctl-legend.show {
+  display: flex;
+}
+.ctl-mini {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.3vw;
+  padding: 1vh 1vw 0.9vh;
+  background: var(--ctl-plate);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.ctl-mini:empty {
+  display: none;
+}
+.ctl-fig {
+  gap: 0.7vh;
+}
+.ctl-fig .ct-fig-label {
+  color: rgba(244, 247, 255, 0.86);
+  font-size: clamp(12px, 1.7vh, 24px);
+  letter-spacing: 0.1em;
+}
+.ctl-help {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  padding: 0 0.7vw;
+  background: var(--ctl-plate);
+  border: 0;
+  border-radius: 2px;
+  color: rgba(244, 247, 255, 0.86);
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out);
+}
+.ctl-help:hover,
+.ctl-help[aria-expanded="true"] {
+  background: var(--bug-navy);
+  color: var(--bug-white);
+}
+.ctl-help:focus-visible {
+  outline: 2px solid var(--bug-white);
+  outline-offset: 2px;
+}
+/* Quiet during the rally; out of the way of the Banner, the Final card and the vote panel. */
+body.in-rally #ctl-legend {
+  opacity: 0.55;
+}
+body.banner-up #ctl-legend,
+body.final-up #ctl-legend,
+#votepanel.show ~ #ctl-legend {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Spectators: "?" sits over the TAKE SEAT button while it shows. */
+#takeseat.show ~ #ctl-legend {
+  bottom: calc(4.6vh + 2.6 * var(--t-sm) + 1.2vh);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #controls.show {
+    animation: none;
   }
 }
 

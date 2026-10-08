@@ -34,6 +34,7 @@ import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
+import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
   isNotable,
@@ -53,7 +54,6 @@ const connLabel = document.getElementById("conn-label")!;
 const watching = document.getElementById("watching")!;
 const watchingN = document.getElementById("watching-n")!;
 const takeSeat = document.getElementById("takeseat") as HTMLButtonElement;
-const hint = document.getElementById("hint")!;
 const scoreBug = new ScoreBug(document.getElementById("scorebug")!);
 scoreBug.render(bugModel(null, null));
 const bannerQueue = new BannerQueue();
@@ -164,36 +164,61 @@ takeSeat.addEventListener("click", () => {
   net.send({ t: "takeseat" });
 });
 
-/** How long the controls hint stays up when nobody serves. */
-const HINT_MS = 12_000;
-let hintTimer: number | undefined;
-let hintDone = false;
-/** The match phase last seen while the hint is up: a serve → rally step is the first serve. */
-let hintPhase: MatchPhase | null = null;
+// ── Controls: the card (first time, and on "?") and the compact legend ──────
 
-/**
- * Show the controls hint to a new player; it fades for good after HINT_MS, or sooner once
- * they watch a serve go in. Joining mid-rally does not count, so a reconnect still gets a showing.
- */
-function showHint(): void {
-  if (hintDone) return;
-  hintPhase = null;
-  hint.classList.add("show");
-  window.clearTimeout(hintTimer);
-  hintTimer = window.setTimeout(fadeHint, HINT_MS);
+let controlsSeen = false;
+try {
+  controlsSeen = localStorage.getItem(CONTROLS_SEEN_KEY) === "1";
+} catch {
+  // storage blocked (private mode): the card shows on each visit
+}
+/** Dev only (?controls=1): the card opens on every Welcome, seen or not, and holds through serves (screenshots). */
+let devControls = false;
+const controlsCard = new ControlsCard(document.getElementById("controls")!, closeControls);
+const ctlLegend = document.getElementById("ctl-legend")!;
+const controlsLegend = new ControlsLegend(ctlLegend, toggleControls);
+/** The match phase last seen while the card is up: a serve → rally step is a serve going in. */
+let controlsPhase: MatchPhase | null = null;
+
+function openControls(): void {
+  controlsPhase = null;
+  controlsCard.show(role);
+  controlsLegend.setExpanded(true);
 }
 
-/** On each match update: fade the hint on a serve → rally transition seen since it appeared. */
-function trackHintPhase(phase: MatchPhase): void {
-  if (hintDone || !hint.classList.contains("show")) return;
-  if (hintPhase === "serve" && phase === "rally") fadeHint();
-  hintPhase = phase;
+/** Close the card (button, Esc, "?", or the first serve); it no longer opens by itself. */
+function closeControls(): void {
+  if (!controlsCard.showing) return;
+  controlsCard.hide();
+  controlsLegend.setExpanded(false);
+  if (controlsSeen) return;
+  controlsSeen = true;
+  try {
+    localStorage.setItem(CONTROLS_SEEN_KEY, "1");
+  } catch {
+    // storage blocked: it is seen for this page only
+  }
 }
 
-function fadeHint(): void {
-  hintDone = true;
-  window.clearTimeout(hintTimer);
-  hint.classList.add("faded");
+function toggleControls(): void {
+  if (controlsCard.showing) closeControls();
+  else openControls();
+}
+
+/** On each Welcome: the legend for our role, and the card the first time we take a seat. */
+function renderControls(): void {
+  controlsLegend.render(role);
+  ctlLegend.classList.add("show");
+  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && devControls)) openControls();
+  else if (controlsCard.showing) controlsCard.show(role); // redrawn for a new role
+}
+
+/** On each match update: the card goes away once a serve goes in, and the legend dims for the rally. */
+function trackControlsPhase(phase: MatchPhase): void {
+  document.body.classList.toggle("in-rally", phase === "rally");
+  if (!controlsCard.showing) return;
+  if (controlsPhase === "serve" && phase === "rally" && !(import.meta.env.DEV && devControls)) closeControls();
+  controlsPhase = phase;
 }
 
 const SEATS: Slot[] = ["A1", "A2", "B1", "B2"];
@@ -551,7 +576,6 @@ const net = new Net({
       scene.setSelfMarker(msg.slot);
       input?.dispose();
       input = new Input(scene.domElement);
-      showHint();
       resetbtn.classList.add("show");
     } else {
       input?.dispose();
@@ -559,11 +583,10 @@ const net = new Net({
       selfSlot = null;
       scene.setSpectatorCamera();
       scene.setSelfMarker(null);
-      window.clearTimeout(hintTimer); // a seat lost mid-showing does not use up the hint
-      hint.classList.remove("show");
       resetbtn.classList.remove("show");
     }
     renderVote();
+    renderControls();
     if (msg.role === "player" && devBots > 0) {
       for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
       devBots = 0;
@@ -589,7 +612,7 @@ const net = new Net({
     updateFinal();
     renderVote();
     renderTags(msg.phase);
-    trackHintPhase(msg.phase);
+    trackControlsPhase(msg.phase);
     renderServePrompt();
     renderBoards();
     onMatchEvent(msg);
@@ -634,6 +657,8 @@ function showNickname(message = ""): void {
   nickMsg.textContent = message;
   nickname.style.display = "flex";
   resetbtn.classList.remove("show");
+  controlsCard.hide();
+  ctlLegend.classList.remove("show");
   vote = null;
   renderVote();
   nickInput.focus();
@@ -703,6 +728,9 @@ if (import.meta.env.DEV) {
   if (quality === "high" || quality === "low") scene.forceQuality(quality);
   devForceReplay = q.get("forceReplay") === "1";
   devFinal = q.get("finalCard") === "1";
+  devControls = q.get("controls") === "1";
+  // A fresh headless profile has never closed the card: keep it off other screenshots.
+  if (q.get("join") !== null && !devControls) controlsSeen = true;
   const voteKind = q.get("vote");
   if (voteKind === "reset" || voteKind === "rematch") devVote = voteKind;
   const forced = q.get("banner");
@@ -757,6 +785,15 @@ for (const id of REACTIONS) {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  const typing = e.target instanceof HTMLInputElement;
+  if (e.key === "?" && !typing && ctlLegend.classList.contains("show")) {
+    toggleControls();
+    return;
+  }
+  if (e.key === "Escape" && controlsCard.showing) {
+    closeControls();
+    return;
+  }
   if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
   else if (e.code === "KeyN" && role === "player") net.send({ t: "clearbots" });
   else if (e.code === "KeyM" && !(e.ctrlKey || e.metaKey || e.altKey) && !(e.target instanceof HTMLInputElement)) {
