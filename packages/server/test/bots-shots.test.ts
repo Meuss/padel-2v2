@@ -87,6 +87,14 @@ describe("bots use every shot with imperfect timing", () => {
     expect(smashes).toBeGreaterThan(0);
   }, LONG_TEST_MS);
 
+  it("bots aim inside the cage: under 10% of points in 5 seeded 3-minute matches end on the full", async () => {
+    const reasons: (string | null)[] = [];
+    for (const seed of [1, 2, 3, 4, 5]) reasons.push(...(await botMatch(seed, 180)).points.map((p) => p.reason));
+    expect(reasons.length).toBeGreaterThanOrEqual(20);
+    const onTheFull = reasons.filter((r) => r?.endsWith("ON THE FULL")).length;
+    expect(onTheFull / reasons.length).toBeLessThan(0.1);
+  }, LONG_TEST_MS);
+
   it("the same seed plays the same match", async () => {
     const a = await botMatch(42, 20);
     const b = await botMatch(42, 20);

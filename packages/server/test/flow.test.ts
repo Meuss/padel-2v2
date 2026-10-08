@@ -92,8 +92,9 @@ describe("match stats", () => {
     const { room, w, match } = await botRoom();
     const steps = 90 * TICK_RATE;
     for (let i = 0; i < steps; i++) room.step();
-    // End the match at a point break, so no rally is under way.
-    expect(stepUntil(room, () => match().phase === "between", 60 * TICK_RATE)).not.toBeNull();
+    // End the match at a point break, so no rally is under way (bot rallies can run past a minute).
+    const waited = stepUntil(room, () => match().phase === "between", 180 * TICK_RATE);
+    expect(waited).not.toBeNull();
     expect(matches(w.messages()).every((m) => m.stats === null)).toBe(true);
     room.debugEndMatch("A");
     for (let i = 0; i < 4; i++) room.step(); // flush the last snapshot's shots
@@ -130,9 +131,9 @@ describe("match stats", () => {
     expect(stats.B.points).toBe(ends.filter((m) => m.eventTeam === "B").length);
 
     // The duration stops at the end of the match.
-    const simulatedS = ((steps + 4) * TICK_MS) / 1000;
+    const simulatedS = ((steps + waited! + 4) * TICK_MS) / 1000;
     expect(stats.durationS).toBeGreaterThan(80);
-    expect(stats.durationS).toBeLessThanOrEqual(Math.ceil(simulatedS + 60));
+    expect(stats.durationS).toBeLessThanOrEqual(Math.ceil(simulatedS));
     for (let i = 0; i < 2 * TICK_RATE; i++) room.step();
     expect(room.matchMessage().stats!.durationS).toBe(stats.durationS);
     room.stop();

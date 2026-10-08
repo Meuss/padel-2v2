@@ -117,7 +117,7 @@ export const BOT = {
   /** Opponents closer than this |z| (m) to the net count as "at the net" (both there → Lob). */
   netZoneM: 4,
   /** Furthest |x| (m) a bot aims at. */
-  aimMaxX: 3.5,
+  aimMaxX: 2.5,
   /** Furthest |x| (m) a bot aims a Smash at: down the middle. */
   smashMaxX: 1.5,
   /** Bots aim this fraction of the court length deep: the middle of the opposite half. */
