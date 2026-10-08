@@ -1,6 +1,7 @@
 /**
  * Bot decisions: where each Bot moves, when it swings, which Shot it asks for, where it aims,
- * and when it serves. The room calls `updateBots` once per tick, before integrating movement;
+ * and when it serves (never during the replay of a notable point). The room calls `updateBots` once
+ * per tick, before integrating movement;
  * a Bot writes its `input` and `shotRequested` exactly as a human's inputs would arrive, and
  * the room resolves them like any other swing.
  */
@@ -54,6 +55,8 @@ export interface BotContext<S extends BotSeat> {
   rng: Rng;
   /** Strike the toss now, aimed at a ground point. */
   strikeServe(seat: S, now: number, aimPoint: Vec2): void;
+  /** No Bot tosses before this time: the replay of a notable point is still showing. */
+  serveNotBefore: number;
 }
 
 /**
@@ -130,7 +133,7 @@ export function updateBots<S extends BotSeat>(ctx: BotContext<S>, now: number): 
       if (t !== null) {
         // Strike on the first tick at or past the top of the toss: perfect Timing.
         if (t >= tossApex()) ctx.strikeServe(ps, now, boxCentre(match));
-      } else if (ps.serveReadyAt === 0) ps.serveReadyAt = now + 700;
+      } else if (ps.serveReadyAt === 0) ps.serveReadyAt = Math.max(now + 700, ctx.serveNotBefore);
       else if (now >= ps.serveReadyAt) match.startToss(ps.slot, now);
     } else {
       ps.serveReadyAt = 0;

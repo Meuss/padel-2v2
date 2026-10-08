@@ -1,12 +1,18 @@
-import type { MatchMsg, ShotEvent, SnapshotMsg, Slot } from "@padel/shared";
-import { describe, expect, it } from "vitest";
 import {
   REPLAY_DELAY_MS,
   REPLAY_MAX_MS,
   REPLAY_SPEED,
   clipFor,
-  clipTime,
   isNotable,
+  replayLengthMs,
+  type MatchMsg,
+  type ShotEvent,
+  type SnapshotMsg,
+  type Slot,
+} from "@padel/shared";
+import { describe, expect, it } from "vitest";
+import {
+  clipTime,
   isPlaying,
   nextState,
   pointOutcome,
@@ -238,5 +244,23 @@ describe("ReplayPlayer", () => {
     const p = new ReplayPlayer(new ReplayRecorder());
     p.start(0);
     expect(p.advance(10, () => {})).toBe(false);
+  });
+});
+
+describe("a Bot's toss after a notable point", () => {
+  it("comes after the replay of a typical notable clip has ended", () => {
+    // A 7-shot rally: served at 10 s, over at 16.2 s (server time). The point end reaches the
+    // client at local T; the server holds a Bot's toss until replayLengthMs after the point end.
+    const T = 50_000;
+    const pointStartMs = 10_000;
+    const pointEndMs = 16_200;
+    const botToss = T + replayLengthMs(pointStartMs, pointEndMs);
+    let s: DirectorState = { mode: "live" };
+    s = nextState(s, { t: "pointEnd", notable: true, pointStartMs, pointEndMs, finalCard: false }, T);
+    expect(isPlaying(s, T + REPLAY_DELAY_MS)).toBe(true);
+    // Still playing just before the toss, and over by the tick at the toss: the clip reached its end.
+    expect(nextState(s, { t: "tick" }, botToss - 20).mode).toBe("replay");
+    expect(nextState(s, { t: "tick" }, botToss).mode).toBe("live");
+    if (s.mode === "replay") expect(clipTime(s, botToss)).toBeCloseTo(pointEndMs);
   });
 });

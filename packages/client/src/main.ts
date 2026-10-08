@@ -7,6 +7,7 @@ import {
   COURT,
   NAME_MAX_LENGTH,
   PLAYER,
+  isNotable,
   REACTIONS,
   SERVICE_LINE_DIST,
   sanitizeName,
@@ -40,7 +41,6 @@ import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLi
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
-  isNotable,
   isPlaying,
   nextState,
   pointOutcome,

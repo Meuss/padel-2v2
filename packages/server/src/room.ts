@@ -22,6 +22,8 @@ import {
   TICK_RATE,
   TOSS,
   encode,
+  isNotable,
+  replayLengthMs,
   judgeTiming,
   resolveKind,
   shotVelocity,
@@ -39,6 +41,7 @@ import {
   type PlayerState,
   type RosterMsg,
   type ShotEvent,
+  type ShotKind,
   type Slot,
   type SnapshotMsg,
   type Team,
@@ -183,6 +186,14 @@ export class Room {
   private statsMatchId = -1;
   /** The match id whose end has been handled (stats frozen, Rematch vote opened). */
   private endedMatchId = -1;
+  /** The current point, for its replay: when it was served, its shots, and the score it is played at. */
+  private point: { startMs: number | null; shots: { team: Team; kind: ShotKind }[]; golden: boolean } = {
+    startMs: null,
+    shots: [],
+    golden: false,
+  };
+  /** Bots toss no earlier than this: clients are showing the replay of a notable point until then. */
+  private replayHoldUntil = 0;
   /** Spectators who asked to Take seat during a rally or a toss, oldest first: seated at the next point break. */
   private pendingSeats: string[] = [];
 
@@ -596,7 +607,10 @@ export class Room {
   private trackMatch(): void {
     const stats = this.currentStats();
     const winner = this.match.takePointWinner();
-    if (winner) stats.point(winner);
+    if (winner) {
+      stats.point(winner);
+      this.holdForReplay(winner);
+    }
     const id = this.match.currentMatchId;
     if (this.match.phase === "over" && this.endedMatchId !== id) {
       this.endedMatchId = id;
@@ -605,8 +619,27 @@ export class Room {
     }
   }
 
+  /**
+   * A point was won: if clients will replay it (the same rules as their director), hold Bots'
+   * tosses until that replay is over. Humans can still cut it short by tossing.
+   */
+  private holdForReplay(winner: Team): void {
+    const { shots, startMs, golden } = this.point;
+    let lastWinnerShot: ShotKind | null = null;
+    for (const s of shots) if (s.team === winner) lastWinnerShot = s.kind;
+    const matchPoint = this.match.phase === "over";
+    if (isNotable({ shots: shots.length, lastWinnerShot, goldenPoint: golden, matchPoint })) {
+      this.replayHoldUntil = this.clock + replayLengthMs(startMs, this.clock);
+    }
+  }
+
   /** Report a Shot in the next snapshot, and count it in the match stats (unless warming up). */
   private recordShot(ps: PlayerSlot, shot: ShotEvent): void {
+    if (shot.kind === "serve") {
+      const m = this.match.toMessage(); // once a serve: the score this point is played at
+      this.point = { startMs: this.clock, shots: [], golden: !m.tiebreak && m.pointA === "40" && m.pointB === "40" };
+    }
+    this.point.shots.push({ team: ps.team, kind: shot.kind });
     this.pendingShots.push(shot);
     if (this.match.phase !== "warmup") this.currentStats().shot(ps.team, shot.kind, shot.timing);
   }
@@ -671,6 +704,7 @@ export class Room {
         match: this.match,
         rng: this.rng,
         strikeServe: (ps, at, aimPoint) => this.strikeServe(ps, at, aimPoint),
+        serveNotBefore: this.replayHoldUntil,
       },
       now,
     );

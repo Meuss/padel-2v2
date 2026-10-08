@@ -5,20 +5,11 @@
  *
  * A replay is held as "replay" from the point end; it only starts playing at `startedAtMs`,
  * REPLAY_DELAY_MS later, after the Banner's entry. It ends at the end of the clip, on a skip,
- * on the serve toss, or when a rally starts, so it never delays the Serve.
+ * on the serve toss, or when a rally starts, so it never delays the Serve. Which points are
+ * notable, the clip and the timing constants live in @padel/shared (replay.ts): the server holds a
+ * Bot's toss with the same rules.
  */
-import type { MatchMsg, MatchPhase, ShotKind, Team } from "@padel/shared";
-
-/** How long after the point end the replay starts (after the Banner's entry). */
-export const REPLAY_DELAY_MS = 1000;
-/** The clip starts this long before the serve of a short point… */
-export const REPLAY_LEAD_MS = 600;
-/** …and is never longer than this: a long point keeps only its end. */
-export const REPLAY_MAX_MS = 4500;
-/** Playback speed: slower than live, so the decisive shot reads. */
-export const REPLAY_SPEED = 0.85;
-/** A rally of at least this many shots (the serve included) is notable. */
-export const NOTABLE_RALLY_SHOTS = 6;
+import { REPLAY_DELAY_MS, REPLAY_SPEED, clipFor, type MatchMsg, type MatchPhase, type Team } from "@padel/shared";
 
 export type DirectorState = { mode: "live" } | { mode: "replay"; fromMs: number; toMs: number; startedAtMs: number };
 
@@ -33,22 +24,6 @@ export type DirectorEvent =
   | { t: "tick" };
 
 const LIVE: DirectorState = { mode: "live" };
-
-export function isNotable(p: {
-  shots: number;
-  lastWinnerShot: ShotKind | null;
-  goldenPoint: boolean;
-  matchPoint: boolean;
-}): boolean {
-  return p.shots >= NOTABLE_RALLY_SHOTS || p.lastWinnerShot === "smash" || p.goldenPoint || p.matchPoint;
-}
-
-/** The recorded stretch to replay: from REPLAY_LEAD_MS before the serve, at most REPLAY_MAX_MS. */
-export function clipFor(pointStartMs: number | null, pointEndMs: number): { fromMs: number; toMs: number } {
-  const earliest = pointEndMs - REPLAY_MAX_MS;
-  const fromMs = pointStartMs === null ? earliest : Math.max(earliest, pointStartMs - REPLAY_LEAD_MS);
-  return { fromMs, toMs: pointEndMs };
-}
 
 /** True while a replay is on screen (held, but not yet started, counts as live). */
 export function isPlaying(s: DirectorState, nowMs: number): s is Extract<DirectorState, { mode: "replay" }> {
