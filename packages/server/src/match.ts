@@ -433,11 +433,14 @@ export class MatchEngine {
           Math.abs(at.x) <= HALF_W;
         if (!inBox) {
           // Off the net cord and back on the server's side: the net is what went wrong.
-          const highlight: FaultHighlight =
-            this.serveNetTouched && sign(at.z) !== this.targetSide
-              ? { kind: "net", surface: "net", points: [this.netPoint(at)] }
-              : { kind: "out", surface: "floor", points: [copy(at)] };
-          return this.serveFault(now, "SERVE OUT — WRONG BOX", highlight);
+          if (this.serveNetTouched && sign(at.z) !== this.targetSide) {
+            return this.serveFault(now, "SERVE INTO THE NET", {
+              kind: "net",
+              surface: "net",
+              points: [this.netPoint(at)],
+            });
+          }
+          return this.serveFault(now, "SERVE OUT — WRONG BOX", { kind: "out", surface: "floor", points: [copy(at)] });
         }
         if (this.serveNetTouched) {
           return this.serveLet(now); // net cord into the box → replay

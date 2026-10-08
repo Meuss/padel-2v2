@@ -132,3 +132,41 @@ describe("fault highlight points", () => {
     });
   }, PHYSICS_TEST_MS);
 });
+
+describe("serve reclassifications", () => {
+  /** Feed the engine one contact per tick, the ball sitting at each contact. */
+  function feed(engine: MatchEngine, contacts: { kind: Contact["kind"]; pos: Vec3 }[]) {
+    let now = APEX_MS;
+    for (const c of contacts) {
+      now += TICK_MS;
+      engine.tick(now, c.pos, 5, [c]);
+    }
+    return engine.toMessage();
+  }
+
+  it("a serve off the wall first is a wall fault naming the panel", () => {
+    // A1 serves from z < 0 into B's half (z > 0).
+    const glass = feed(engineAfterServe(), [{ kind: "glass", pos: { x: 5, y: 1, z: 4 } }]);
+    expect(glass.reason).toBe("SERVE HIT THE GLASS FIRST");
+    expect(glass.highlight).toMatchObject({ kind: "wall", surface: "glass", points: [{ x: 5, y: 1, z: 4 }] });
+    const mesh = feed(engineAfterServe(), [{ kind: "mesh", pos: { x: 5, y: 2.5, z: 8 } }]);
+    expect(mesh.reason).toBe("SERVE HIT THE FENCE FIRST");
+    expect(mesh.highlight).toMatchObject({ kind: "wall", surface: "mesh" });
+  });
+
+  it("a net cord that falls back on the server's side is SERVE INTO THE NET, marked at the net", () => {
+    const net = { x: 1, y: 0.9, z: 0 };
+    const msg = feed(engineAfterServe(), [
+      { kind: "net", pos: net },
+      { kind: "floor", pos: { x: 1, y: 0.07, z: -0.6 } },
+    ]);
+    expect(msg.reason).toBe("SERVE INTO THE NET");
+    expect(msg.highlight).toMatchObject({ kind: "net", surface: "net", points: [net] });
+  });
+
+  it("a serve landing outside the box on the far side stays SERVE OUT — WRONG BOX", () => {
+    const msg = feed(engineAfterServe(), [{ kind: "floor", pos: { x: -2, y: 0.07, z: 3 } }]);
+    expect(msg.reason).toBe("SERVE OUT — WRONG BOX");
+    expect(msg.highlight).toMatchObject({ kind: "out", surface: "floor" });
+  });
+});
