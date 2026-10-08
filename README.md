@@ -13,12 +13,29 @@ the look, how hits feel, the netcode and the match flow.
 
 | V1 | V2 |
 |---|---|
-| ![V1: the original game](docs/screenshots/v1.png) | ![V2: the Pro Tour Broadcast arena](docs/screenshots/v2.png) |
-| The original game. | Pro-tour broadcast look, Drive / Lob / Smash with Timing, client-side prediction, instant replays, a final card and a rematch vote. V2 in progress: the arena and players are in; shots, sound and broadcast graphics come next. |
+| ![V1: the original game](docs/screenshots/v1.png) | ![V2: a rally in the Player cam, with the score bug](docs/screenshots/v2.png) |
+| — | ![V2: the join screen over the live arena](docs/screenshots/v2-join.png) ![V2: a GAME Banner in the Broadcast cam](docs/screenshots/v2-broadcast.png) |
 
-V2 lands in stages. The live link runs whatever stage is currently deployed. The
-design target for V2 is in [docs/design/v2-comp-clean-feed.png](docs/design/v2-comp-clean-feed.png)
-(a generated mockup, not a screenshot).
+What V2 has:
+
+- A night broadcast arena: floodlights, a crowd in the stands, LED boards with the
+  live score and names.
+- The regulation cage: glass and metal mesh at regulation heights, each with its
+  own bounce, and a sagging net.
+- Mannequin players in Azul and Rojo kits.
+- Drive, Lob and an automatic Smash, each with Timing (early, perfect, late).
+- An aimed serve: toss, then strike at the top.
+- Lag-compensated hits and client-side prediction.
+- Synthesized sound.
+- The score bug and the Score call.
+- Banners between points.
+- Instant replays of notable points.
+- Fault animations that show what lost the point, where it happened.
+- The Final card and a Rematch vote.
+- Take seat for spectators.
+- A controls card.
+
+All screenshots are real renders from the game (`pnpm shoot`).
 
 ## Run locally
 
@@ -39,6 +56,7 @@ pnpm dev          # client on http://localhost:5173, server on :8080
 | `pnpm build` | Production client build → `packages/client/dist` |
 
 To test a full match alone, open the game and press `B` three times to add bots.
+Bots serve by themselves; you serve with `Space` then a click.
 
 ## How to play
 
@@ -46,15 +64,22 @@ To test a full match alone, open the game and press `B` three times to add bots.
 |---|---|
 | `WASD` / arrows | Move (relative to your side of the court) |
 | Mouse | Aim |
-| Click | Swing |
-| `Space` | Serve. Bots never serve, so a human has to |
+| Left-click | Drive |
+| Right-click | Lob |
+| (automatic) | Smash, when the ball is high at contact |
+| `Space`, then click | Toss, then click at the top of the toss to serve |
+| `Enter` | Skip a replay (for everyone) |
+| `M` | Sound on / off |
 | `E` | Reaction emote |
-| `B` / `N` | Add a bot / remove all bots |
+| `?` | Controls |
+| `B` / `N` | Add a bot / clear all bots |
+| Take seat | Spectators: replace a bot or fill an empty seat |
 
 - Everyone, spectators included, is kicked after **60 s** without mouse or keyboard
   activity.
-- Any human player can start a **reset vote** to restart the match. It needs every
-  human player to accept; one decline cancels it, and it expires after 30 s.
+- Any human player can start a **reset vote** (RESET SET) to restart the match. It
+  needs every human player to accept; one decline cancels it, and it expires after
+  30 s. When a match ends, the Final card opens a **Rematch vote**.
 - Scoring follows modern padel: golden point at deuce, sets to 6 (win by 2),
   tiebreak at 6–6.
 
@@ -62,13 +87,21 @@ To test a full match alone, open the game and press `B` three times to add bots.
 
 ```
 packages/
-  shared/   protocol types, court & tuning constants, pure gameplay math
-  server/   Node + ws + Rapier: room loop, physics, match rules, bots
-  client/   Vite + Three.js: rendering, input, interpolation, HUD
+  shared/   wire protocol, court & tuning constants, the regulation cage (CAGE),
+            pure gameplay, Shot, replay and nickname logic
+  server/   Node + ws + Rapier: room loop, physics, match rules, bots, stats,
+            GET /status
+  client/   Vite + Three.js
+    src/world/    arena, court & cage, players, cameras, hit feedback, fault animations
+    src/hud/      score bug, Banner, Final card, votes, controls, join screen
+    src/replay/   Instant replay: recorder, director, player
+    src/audio/    synthesized sound (Web Audio)
+scripts/shoot.mjs  headless screenshots + render stats (`pnpm shoot`, dev server running)
+docs/              screenshots, design comps, V2 spec and plans
 ```
 
 - Gameplay tuning (ball speed, swing power, court size, scoring rules) lives in
-  `packages/shared/src/constants.ts`.
+  `packages/shared/src/constants.ts`; the cage layout in `packages/shared/src/court.ts`.
 - `@padel/shared` has no build step. Both sides import its TypeScript source
   directly.
 - Rapier is pinned to exactly `0.18.0`: newer versions change how the ball

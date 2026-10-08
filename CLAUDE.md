@@ -12,30 +12,51 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
 
 ## Packages
 
-- `packages/shared`: wire protocol (`messages.ts`), court/tick constants
-  (`constants.ts`, which also documents the coordinate system), and pure gameplay
-  math (`gameplay.ts`). Ships TypeScript source with no build step: Vite
+- `packages/shared`: ships TypeScript source with no build step. Vite
   (`packages/client/vite.config.ts`) and Vitest (`vitest.config.ts`) alias
   `@padel/shared` to `src/index.ts`, and the server reads it through `tsx`. If you
   add a new consumer, give it the same alias.
-- `packages/server`: `index.ts` (HTTP `/health` + WebSocket dispatch) → `room.ts`
-  (60 Hz fixed-step loop, slots, bots, votes, idle-kick) → `world.ts` (Rapier
-  court + ball, surfaces contacts) and `match.ts` (rules: serve, faults, scoring,
-  side changes).
-- `packages/client`: `main.ts` (bootstrap, HUD/DOM), `net.ts` (socket + reconnect),
-  `interp.ts` (snapshot buffer, renders `INTERP_DELAY_MS` behind), `scene.ts`
-  (Three.js), `input.ts`. `world/` holds the scene's parts: `arena`, `court`,
-  `avatar`, `cameras`, `boards` (LED ribbon), `quality` (auto fallback) and
-  `palette`; hit feedback will land there too. `public/models/` holds the CC0
-  player model, with its `SOURCE.md`.
+  - `messages.ts`: the wire protocol (protocol v5, `PROTOCOL_VERSION` in `constants.ts`).
+  - `constants.ts`: court, tick and tuning constants; documents the coordinate system.
+  - `court.ts`: `CAGE`, the regulation glass-and-mesh cage and the single source for
+    both the server's colliders and the client's cage meshes. `netHeightAt(x)` (net sag)
+    is shared the same way.
+  - `gameplay.ts` (movement, `swingConnects`), `shots.ts` (Shot kinds, Timing, shot
+    velocities, toss and serve math), `replay.ts` (which points are notable, clip
+    length; used by the client's director and the server's bot toss hold),
+    `names.ts` (nickname cleaning).
+- `packages/server`: `index.ts` (HTTP: `/health`, and `GET /status` →
+  `{ playing, watching }` for the join screen; WebSocket dispatch) → `room.ts` (60 Hz
+  fixed-step loop, seats, Take seat, votes, idle-kick, replay hold) → `world.ts`
+  (Rapier court + ball, contacts tagged by surface and cage material), `match.ts`
+  (rules: serve, faults, scoring, side changes, fault highlights), `bots.ts` (Bot
+  movement, Shots and serves), `stats.ts` (Final card stats), `history.ts` (ball
+  history for lag-compensated hits) and `rng.ts` (seeded PRNG for bots).
+- `packages/client`: `main.ts` (bootstrap and HUD wiring), `net.ts` (socket +
+  reconnect), `interp.ts` (snapshot buffer, renders `INTERP_DELAY_MS` behind),
+  `predict.ts` (local movement prediction), `events.ts` (releases snapshot Shots and
+  contacts when the render time reaches them), `input.ts`, `scene.ts` (Three.js),
+  `dev.ts` (dev query params, see below).
+  - `world/`: the 3D scene: `arena`, `court`, `avatar`, `cameras`, `boards` (LED
+    ribbon), `feedback` (Timing arc, trail, puffs), `faultfx` (fault animations),
+    `selfmarker`, `quality` (auto fallback), `palette`.
+  - `hud/`: DOM graphics: `scorebug`, `banner`, `finalcard`, `votepanel`, `controls`
+    (card + legend), `join`, `overlays` (name tags, reactions, emote tray), `copy`
+    (English broadcast copy), `glyphs`, `button`, `hud.css` (tokens).
+  - `replay/`: Instant replay: `recorder`, `director` (pure), `player`, `controller`.
+  - `audio/`: synthesized Web Audio (`engine`, `voices`); no sound files.
+  - `public/models/` holds the CC0 player model, with its `SOURCE.md`.
 
 ## Conventions
 
 - Relative imports use `.js` extensions (`./room.js`) and type-only imports use
   `import type`; `verbatimModuleSyntax` and `noUncheckedIndexedAccess` are on.
 - Gameplay tuning goes in `shared/src/constants.ts`, the single source of truth
-  for both sides. Pure logic belongs in `shared/src/gameplay.ts`, where it is unit
-  testable without Rapier or the DOM.
+  for both sides. Pure logic belongs in `shared/src` (`gameplay.ts`, `shots.ts`,
+  `replay.ts`), where it is unit testable without Rapier or the DOM.
+- All copy is English broadcast copy; the Teams are AZUL / ROJO, the only non-English
+  words. Client copy lives in `hud/copy.ts`, the server's event and fault reasons in
+  `match.ts`. Terms follow `CONTEXT.md`.
 - Changing a message: edit the types in `shared/src/messages.ts`, then handle it
   on both sides (server dispatch is in `server/src/index.ts`, client dispatch in
   `client/src/net.ts`). `PROTOCOL_VERSION` is sent on join; the server answers a
@@ -59,7 +80,16 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
 - Reaction images live in `packages/client/public/reactions/<id>.png` and must
   match `REACTIONS` in `messages.ts`. The root `images/` folder holds the source
   copies.
-- `pnpm shoot` (dev server running) renders the game in headless Chrome and writes screenshots + render stats to `.shots/`; use it to verify visual changes.
+- `pnpm shoot` (dev server running) renders the game in headless Chrome (SwiftShader,
+  slow) and writes screenshots + `stats.json` to `.shots/`; use it to verify visual
+  changes. Flags: `--out dir`, `--wait ms`, `--width n --height n`, `--spectator` (adds a
+  spectator page), `--autoserve` (the player serves by itself, so bots rally),
+  `--quality high|low|auto`, `--no-join [--type text]` (the join screen), `--url u`, and
+  `--query k=v&…` for the dev params read by `dev.ts`: `banner=<kind>`, `forceReplay=1`,
+  `fault=<kind>[&faultAt=ms]`, `finalCard=1`, `controls=1`, `vote=reset|rematch`,
+  `tray=1`, `joinView=loading|outdated`, `roomStatus=<playing>,<watching>`. All dev
+  code sits behind `import.meta.env.DEV`. If the shared dev room is stuck in "over",
+  reset it with a throwaway WebSocket client that joins and votes.
 - Tests: `packages/**/test/*.test.ts`, run with Vitest from the root. `Room.create()`
   works headless with fake sockets (`server/test/fakes.ts`); `room.debugPlaceBall()`
   sets up a shot.
@@ -75,6 +105,9 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
 - Serves are a toss (Space) then a click at the top of the toss; Bots serve
   automatically with perfect timing. Run end-to-end checks with one real client
   plus bots (`B`).
+- Under `pnpm shoot` (SwiftShader) the join screen's `/status` reading usually times
+  out behind the first render, so it shows the default room line; real browsers get
+  the counts.
 - The server deliberately ignores the per-frame `input` stream for idle detection.
   Only explicit messages (`activity`, `react`, votes, bot commands) reset the 60 s
   idle-kick timer.
