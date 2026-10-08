@@ -36,7 +36,8 @@ export interface NetHandlers {
 
 const DEFAULT_URL = "ws://localhost:8080";
 
-function resolveServerUrl(): string {
+/** The game server's ws(s) address: VITE_SERVER_URL, or the local dev server. */
+export function resolveServerUrl(): string {
   const fromEnv = import.meta.env.VITE_SERVER_URL as string | undefined;
   return fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_URL;
 }

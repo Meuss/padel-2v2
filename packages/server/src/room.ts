@@ -491,6 +491,12 @@ export class Room {
     return this.clients.size;
   }
 
+  /** The room at a glance for GET /status: humans seated, and the connections watching. */
+  status(): { playing: number; watching: number } {
+    const playing = this.humanPlayerIds().length;
+    return { playing, watching: Math.max(0, this.clients.size - playing) };
+  }
+
   matchMessage(): MatchMsg {
     const msg = this.match.toMessage();
     if (msg.phase === "over") msg.stats = this.currentStats().snapshot(this.clock);

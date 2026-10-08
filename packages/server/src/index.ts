@@ -1,6 +1,6 @@
 /**
- * Entry point for the authoritative game server: an HTTP server (health checks /
- * Render) with a WebSocket server on top. On `join` a connection claims a player
+ * Entry point for the authoritative game server: an HTTP server (health checks for
+ * Render, and GET /status: `{ playing, watching }` for the join screen) with a WebSocket server on top. On `join` a connection claims a player
  * slot (or becomes a spectator) and is sent a Welcome; `input` messages feed the
  * room's movement integration, and the other messages map onto room methods. The room runs the physics loop and broadcasts.
  */
@@ -22,6 +22,16 @@ const http = createServer((req, res) => {
   if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("padel server ok");
+    return;
+  }
+  if (req.url === "/status") {
+    // Read by the join screen (another origin) before it connects; the request also wakes a sleeping server.
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+    });
+    res.end(JSON.stringify(room.status()));
     return;
   }
   res.writeHead(404);

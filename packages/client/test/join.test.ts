@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capName, nameCount, roomLine } from "../src/hud/join.js";
+import { capName, countsLine, nameCount, parseStatus, roomLine, statusUrl } from "../src/hud/join.js";
 
 const human = { isBot: false };
 const bot = { isBot: true };
@@ -48,5 +48,32 @@ describe("capName", () => {
     const sixteen = "🎾".repeat(16);
     expect(capName(sixteen + "🎾")).toBe(sixteen);
     expect(nameCount(capName(sixteen + "🎾"))).toBe("16/16");
+  });
+});
+
+describe("statusUrl", () => {
+  it("reads the server's /status over http(s) from its ws(s) address", () => {
+    expect(statusUrl("ws://localhost:8080")).toBe("http://localhost:8080/status");
+    expect(statusUrl("wss://padel.onrender.com")).toBe("https://padel.onrender.com/status");
+    expect(statusUrl("wss://padel.onrender.com/socket?x=1")).toBe("https://padel.onrender.com/status");
+  });
+
+  it("is null for an address it cannot read", () => {
+    expect(statusUrl("not a url")).toBeNull();
+    expect(statusUrl("ftp://example.com")).toBeNull();
+  });
+});
+
+describe("countsLine and parseStatus", () => {
+  it("formats the counts the server reports", () => {
+    expect(countsLine({ playing: 2, watching: 5 })).toBe("2 playing · 5 watching");
+    expect(countsLine({ playing: 0, watching: 0 })).toBe("Court is free");
+  });
+
+  it("accepts only two non-negative whole counts", () => {
+    expect(parseStatus({ playing: 1, watching: 0 })).toEqual({ playing: 1, watching: 0 });
+    expect(parseStatus({ playing: -1, watching: 0 })).toBeNull();
+    expect(parseStatus({ playing: "1", watching: 0 })).toBeNull();
+    expect(parseStatus(null)).toBeNull();
   });
 });

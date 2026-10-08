@@ -59,3 +59,18 @@ describe("roster seatOpen", () => {
     room.stop();
   });
 });
+
+describe("status", () => {
+  it("counts the humans seated as playing and every other connection as watching", async () => {
+    const room = await Room.create();
+    expect(room.status()).toEqual({ playing: 0, watching: 0 });
+    const p = fakeClient("p");
+    room.addClient(p);
+    room.claimSlot(p.id, p.name);
+    room.debugAddBots(2);
+    const s = fakeClient("s");
+    room.addClient(s);
+    expect(room.status()).toEqual({ playing: 1, watching: 1 });
+    room.stop();
+  });
+});

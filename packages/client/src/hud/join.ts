@@ -1,18 +1,59 @@
 /**
  * The join screen's words and its controls legend (docs/design/v2-comp-join.png): the room line
  * under the legend, the nickname counter, and the four controls a new player needs first.
- * roomLine and nameCount are pure (unit tested); fillJoinLegend only draws.
+ * roomLine, countsLine, statusUrl, parseStatus and nameCount are pure (unit tested); fillJoinLegend
+ * only draws, and fetchRoomCounts reads the server's GET /status before the player connects.
  */
 import { NAME_MAX_LENGTH } from "@padel/shared";
 import { keycap, mouse, wasdKeys } from "./glyphs.js";
+
+/** The room in people: humans seated, and everyone else connected. */
+export interface RoomCounts {
+  playing: number;
+  watching: number;
+}
+
+/** "3 playing · 1 watching", or "Court is free" when nobody is there. Pure. */
+export function countsLine({ playing, watching }: RoomCounts): string {
+  if (playing === 0 && watching === 0) return "Court is free";
+  return `${playing} playing · ${watching} watching`;
+}
 
 /** The room under the legend: "3 playing · 1 watching" from a roster, or the rule before one arrives. */
 export function roomLine(roster: { players: readonly { isBot: boolean }[]; spectatorCount: number } | null): string {
   if (!roster) return "First four play · the rest watch";
   // A bot's seat is anyone's for the taking: only people count as playing.
-  const playing = roster.players.filter((p) => !p.isBot).length;
-  if (playing === 0 && roster.spectatorCount === 0) return "Court is free";
-  return `${playing} playing · ${roster.spectatorCount} watching`;
+  return countsLine({ playing: roster.players.filter((p) => !p.isBot).length, watching: roster.spectatorCount });
+}
+
+/** The server's GET /status address from its ws(s) address (http(s), same host); null if unreadable. Pure. */
+export function statusUrl(serverUrl: string): string | null {
+  const m = /^(wss?):\/\/([^/?#]+)/i.exec(serverUrl.trim());
+  if (!m) return null;
+  return `${m[1]!.toLowerCase() === "wss" ? "https" : "http"}://${m[2]}/status`;
+}
+
+/** The /status body if it is two non-negative whole counts, else null. Pure. */
+export function parseStatus(body: unknown): RoomCounts | null {
+  if (typeof body !== "object" || body === null) return null;
+  const { playing, watching } = body as Record<string, unknown>;
+  const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  return count(playing) && count(watching) ? { playing, watching } : null;
+}
+
+/**
+ * The room's counts from the server before connecting (null on any failure, silently). The request
+ * also wakes a sleeping free-tier server while the player types a name.
+ */
+export async function fetchRoomCounts(serverUrl: string, timeoutMs = 4000): Promise<RoomCounts | null> {
+  const url = statusUrl(serverUrl);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
+    return res.ok ? parseStatus(await res.json()) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The field's cap: 16 code points, like the server's (maxlength would count UTF-16 units). Pure. */

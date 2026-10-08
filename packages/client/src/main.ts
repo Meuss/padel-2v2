@@ -29,14 +29,14 @@ import { EVENT_STALE_MS, EventQueue } from "./events.js";
 import { AudioEngine } from "./audio/engine.js";
 import { crowdLevel, crowdReaction, screenPan, shouldPlay } from "./audio/voices.js";
 import type { ConnStatus } from "./net.js";
-import { Net } from "./net.js";
+import { Net, resolveServerUrl } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
-import { capName, fillJoinLegend, nameCount, roomLine } from "./hud/join.js";
+import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
@@ -50,6 +50,10 @@ import {
 import { ReplayRecorder } from "./replay/recorder.js";
 import { ReplayPlayer } from "./replay/player.js";
 import "./hud/hud.css";
+
+// Asked before anything is built: the request goes out (and wakes a sleeping server) while the
+// scene builds, and its 4 s timeout is not spent waiting behind that work.
+const roomCountsAtLoad = fetchRoomCounts(resolveServerUrl());
 
 const app = document.getElementById("app")!;
 const conn = document.getElementById("conn")!;
@@ -526,9 +530,20 @@ function joinAsking(): boolean {
   return joinScreen.classList.contains("show") && joinScreen.dataset.view !== "loading";
 }
 
+/** Whether the room line shows a live roster (which outranks a /status reading). */
+let roomFromRoster = false;
+
 /** The room line under the legend; null before any roster (the socket only opens on PLAY). */
 function renderRoom(roster: { players: readonly { isBot: boolean }[]; spectatorCount: number } | null): void {
+  roomFromRoster = roster !== null;
   joinRoom.textContent = roomLine(roster);
+}
+
+/** Before connecting, show the room from GET /status unless a roster has come in; silent on failure. */
+function showRoomCounts(counts: Promise<RoomCounts | null> = fetchRoomCounts(resolveServerUrl())): void {
+  void counts.then((c) => {
+    if (c && !roomFromRoster) joinRoom.textContent = countsLine(c);
+  });
 }
 
 /** Holds the field to 16 code points (an emoji counts once), then updates the counter. */
@@ -737,6 +752,7 @@ function showNickname(message = ""): void {
   nickMsg.textContent = message;
   // The socket is closed: the last roster is stale.
   renderRoom(null);
+  showRoomCounts();
   openJoin("form");
   resetbtn.classList.remove("show");
   controlsCard.hide();
@@ -772,6 +788,7 @@ function play(): void {
 
 fillJoinLegend(document.getElementById("join-controls")!);
 renderRoom(null);
+showRoomCounts(roomCountsAtLoad);
 // A form, so Enter in the field and the PLAY button both submit.
 joinForm.addEventListener("submit", (e) => {
   e.preventDefault();
