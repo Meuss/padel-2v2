@@ -938,7 +938,7 @@ scene.start((dt) => {
       const z = mine ? predicted.z : p.pos.z;
       framePos.set(p.slot, slotPoint(p.slot, x, z));
       scene.setPlayer(p.slot, x, p.pos.y, z, mine ? selfYaw : p.yaw);
-      nameTags.update(p.slot, x, z);
+      nameTags.update(p.slot, x, z, scene.playerHeadTopY(p.slot) ?? undefined);
       if (p.slot === selfSlot) {
         ownPos = setOwnPos(x, z);
         scene.focusCamera(x, p.pos.y, z);

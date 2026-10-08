@@ -399,6 +399,10 @@ export class AvatarFactory {
   }
 }
 
+/** From the head bone's origin (base of the skull) to the top of the head, in metres. */
+const HEAD_ABOVE_BONE = 0.26;
+const HEAD_SCRATCH = new THREE.Vector3();
+
 export class Avatar {
   readonly root = new THREE.Group();
   private fallback: FallbackBody | null;
@@ -408,6 +412,8 @@ export class Avatar {
   private kitMaterials: THREE.Material[] = [];
   private skeletons: THREE.Skeleton[] = [];
   private decal: Decal | null = null;
+  /** The rig's head bone, once the model is in (its world origin sits at the base of the skull). */
+  private headBone: THREE.Object3D | null = null;
   private name = "";
   private disposed = false;
 
@@ -494,6 +500,15 @@ export class Avatar {
     if (!dance) return;
     this.danceAction = dance;
     this.setBase(dance);
+  }
+
+  /**
+   * World height (m) of the top of the head as posed last frame: the head bone plus the skull,
+   * so a crouched ready stance reads lower than PLAYER.height. Falls back to PLAYER.height.
+   */
+  headTopY(): number {
+    if (!this.headBone) return this.root.position.y + PLAYER.height;
+    return this.headBone.getWorldPosition(HEAD_SCRATCH).y + HEAD_ABOVE_BONE;
   }
 
   setName(name: string): void {
@@ -590,6 +605,7 @@ export class Avatar {
     });
 
     findBone(body, "DEF-hand.R")?.add(makeRacketInHand(this.team));
+    this.headBone = findBone(body, "DEF-head") ?? null;
     const spine = findBone(body, "DEF-spine.003");
     this.decal = spine ? makeDecal() : null;
     if (this.decal) {

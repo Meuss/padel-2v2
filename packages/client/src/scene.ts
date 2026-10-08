@@ -202,6 +202,11 @@ export class PadelScene {
     return a;
   }
 
+  /** World height of the top of a slot's head as last drawn, or null without an avatar. */
+  playerHeadTopY(slot: Slot): number | null {
+    return this.players.get(slot)?.headTopY() ?? null;
+  }
+
   /** Nickname printed on the back of a slot's shirt. */
   setPlayerName(slot: Slot, name: string): void {
     this.names.set(slot, name);

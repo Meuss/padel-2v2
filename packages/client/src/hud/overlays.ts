@@ -15,6 +15,9 @@ const reactionSrc = (base: string, id: string) => `${base}reactions/${id}.png`;
 
 // ── Name tags above avatars ──────────────────────────────────────────────────
 
+/** Screen gap (px) between the top of a player's head and the bottom of its name tag. */
+export const NAME_TAG_GAP_PX = 8;
+
 export class NameTags {
   private readonly tags = new Map<Slot, HTMLDivElement>();
 
@@ -30,8 +33,11 @@ export class NameTags {
     this.root.classList.toggle("rally", rally);
   }
 
-  /** Place `slot`'s tag above its avatar at (x, z) this frame. */
-  update(slot: Slot, x: number, z: number): void {
+  /**
+   * Place `slot`'s tag just above its avatar's head at (x, z) this frame: anchored at the top of
+   * the head (`headTopY`, m), then lifted a fixed NAME_TAG_GAP_PX on screen, at every distance.
+   */
+  update(slot: Slot, x: number, z: number, headTopY: number = PLAYER.height): void {
     const info = this.nameOf(slot);
     if (!info) {
       this.remove(slot);
@@ -45,11 +51,11 @@ export class NameTags {
       this.tags.set(slot, el);
     }
     el.textContent = nameTagText(info.name, info.isBot);
-    const p = this.project(x, PLAYER.height + 0.55, z);
+    const p = this.project(x, headTopY, z);
     if (p.visible) {
       el.style.display = "block";
       el.style.left = `${p.x}px`;
-      el.style.top = `${p.y}px`;
+      el.style.top = `${p.y - NAME_TAG_GAP_PX}px`;
     } else {
       el.style.display = "none";
     }
