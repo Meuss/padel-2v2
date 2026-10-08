@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CAGE, CAGE_GATES, COURT, cageTopAt, leftCage, surfaceAt, type CageSegment } from "@padel/shared";
+import {
+  BALL,
+  CAGE,
+  CAGE_GATES,
+  COURT,
+  cageTopAt,
+  leftCage,
+  netHeightAt,
+  surfaceAt,
+  type CageSegment,
+} from "@padel/shared";
 
 const HALF_W = COURT.width / 2;
 const HALF_L = COURT.length / 2;
@@ -64,7 +74,9 @@ describe("surfaceAt", () => {
     expect(surfaceAt(0, 2.9, -10)).toBe("glass");
     expect(surfaceAt(-5, 2.5, -7)).toBe("mesh"); // above the stepped glass
     expect(surfaceAt(-5, 1.5, -7)).toBe("glass");
-    expect(surfaceAt(-4.93, 1.0, 3)).toBe("mesh"); // a ball's centre, just inside the side wall
+    // A ball's centre touching the side wall, whose face is on the court's edge.
+    expect(surfaceAt(-(HALF_W - BALL.radius), 1.0, 3)).toBe("mesh");
+    expect(surfaceAt(0, 2.0, HALF_L - BALL.radius)).toBe("glass");
     expect(surfaceAt(0, 4.2, 10)).toBeNull();
   });
 });
@@ -86,5 +98,16 @@ describe("leftCage", () => {
     expect(leftCage({ x: 0, y: 4.1, z: 10.05 })).toBe(true);
     expect(leftCage({ x: 4.9, y: 3.5, z: 0 })).toBe(false); // still inside
     expect(leftCage({ x: 6, y: 1, z: 0 })).toBe(true); // well outside, whatever the height
+  });
+});
+
+describe("netHeightAt", () => {
+  it("is 0.88 m at the centre, 0.92 m at the posts, sagging along a parabola between", () => {
+    expect(netHeightAt(0)).toBeCloseTo(0.88, 10);
+    expect(netHeightAt(5)).toBeCloseTo(0.92, 10);
+    expect(netHeightAt(-5)).toBeCloseTo(0.92, 10);
+    expect(netHeightAt(2.5)).toBeCloseTo(0.89, 10); // a quarter of the rise halfway out
+    expect(netHeightAt(-4.9)).toBeCloseTo(0.88 + 0.04 * 0.98 * 0.98, 10);
+    expect(netHeightAt(7)).toBeCloseTo(0.92, 10); // never above the posts
   });
 });

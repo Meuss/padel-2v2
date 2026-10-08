@@ -6,17 +6,22 @@
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CAGE, CAGE_GATES, cageTopAt, sideX, type CourtConfig } from "@padel/shared";
+import { CAGE, CAGE_GATES, COURT, cageTopAt, netHeightAt, sideX, type CourtConfig } from "@padel/shared";
 import { PALETTE } from "./palette.js";
 import type { Quality } from "./quality.js";
 
 const LINE_W = 0.05;
 const POST = 0.1;
 const RAIL = 0.08;
-/** Section of a gate's frame bars. */
+/** Section of a gate's frame bars, and of the thin frame along each glass pane's foot. */
 const GATE_BAR = 0.05;
-/** Metres per fence cell, and per (finer) net cell. */
-const FENCE_CELL = 0.18;
+const GLASS_FRAME = 0.04;
+/** The net's white tape, its posts, and how finely its sagging top is drawn. */
+const TAPE_H = 0.06;
+const NET_POST_R = 0.045;
+const NET_SEGMENTS = 24;
+/** Metres per mesh cell (a dense wire grid), and per (finer) net cell. */
+const FENCE_CELL = 0.1;
 const NET_CELL = 0.07;
 /** Environment reflection strength on the glass (the scene's own is 0.3). */
 const GLASS_REFLECTION = 1.0;
@@ -33,8 +38,8 @@ function flatStrip(w: number, d: number, x: number, y: number, z: number): THREE
 }
 
 /** A vertical panel whose UVs count cells, so one tiling texture fits any size. */
-function cellPanel(w: number, h: number, cell: number): THREE.BufferGeometry {
-  const g = new THREE.PlaneGeometry(w, h);
+function cellPanel(w: number, h: number, cell: number, widthSegments = 1): THREE.BufferGeometry {
+  const g = new THREE.PlaneGeometry(w, h, widthSegments, 1);
   const uv = g.getAttribute("uv") as THREE.BufferAttribute;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * w) / cell, (uv.getY(i) * h) / cell);
   return g;
@@ -75,18 +80,38 @@ function turfTexture(quality: Quality): THREE.CanvasTexture {
   return tex;
 }
 
-/** One wire cell (white = wire, transparent = hole), read as an alpha map. */
-function fenceTexture(): THREE.CanvasTexture {
-  const s = 64;
+/**
+ * One wire cell (white = wire, transparent = hole), read as an alpha map. The wires cover
+ * about a third of the cell, so from afar the mipmaps blend the grid into a dark veil
+ * (unlike the clear glass) and up close it reads as square wire.
+ */
+function fenceTexture(quality: Quality): THREE.CanvasTexture {
+  const s = 32;
+  const wire = 6; // px of wire per cell, along each axis
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = s;
   const ctx = canvas.getContext("2d")!;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 7;
-  ctx.strokeRect(0, 0, s, s);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, s, wire);
+  ctx.fillRect(0, 0, wire, s);
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = quality === "high" ? 8 : 2;
   return tex;
+}
+
+/** `geo` (spanning x across the net) with each vertex raised by the net's sag at its x. */
+function sagged(geo: THREE.BufferGeometry, scaleY: boolean): THREE.BufferGeometry {
+  const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const lift = netHeightAt(x);
+    // A panel from the floor scales up to the sag; the tape moves up by it.
+    pos.setY(i, scaleY ? (pos.getY(i) * lift) / COURT.netHeight : pos.getY(i) + lift);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
 }
 
 export function buildCourt(
@@ -125,7 +150,7 @@ export function buildCourt(
     flatStrip(court.width, LINE_W, 0, y, -sv),
     flatStrip(court.width, LINE_W, 0, y, sv),
     flatStrip(LINE_W, sv * 2, 0, y, 0),
-    placed(new THREE.BoxGeometry(court.width, 0.06, 0.03), 0, court.netHeight, 0),
+    sagged(new THREE.BoxGeometry(court.width, TAPE_H, 0.03, NET_SEGMENTS, 1, 1), false),
   ];
   // Scaled just under the bloom threshold so the floodlit lines stay crisp instead of glowing.
   const lineColor = new THREE.Color(PALETTE.lines).multiplyScalar(0.85);
@@ -163,6 +188,11 @@ export function buildCourt(
     partsAt(z, seg.material === "glass" ? "glass" : "fence").push(placed(panel, x, midY, z, rotY));
     // A rail along every panel's top: the glass/mesh seams and the stepped top of the cage.
     partsAt(z, "steel").push(railGeo(len, x, seg.y1, z, !back));
+    // Glass sits in a thin dark frame: its foot (the posts and the rail above are its sides and head).
+    if (seg.material === "glass") {
+      const foot = new THREE.BoxGeometry(len, GLASS_FRAME, GLASS_FRAME);
+      partsAt(z, "steel").push(placed(foot, x, seg.y0 + GLASS_FRAME / 2, z, rotY));
+    }
   }
 
   // Posts every 2 m and at every panel boundary, each as tall as the cage there.
@@ -199,12 +229,16 @@ export function buildCourt(
     }
   }
 
-  // Net posts join the steel; the net itself joins the fence with finer cells.
-  const netPostH = court.netHeight + 0.08;
-  for (const x of [-halfW + 0.08, halfW - 0.08]) {
-    steelParts.push(placed(new THREE.CylinderGeometry(0.045, 0.045, netPostH, 10), x, netPostH / 2, 0));
+  // Net posts stand against the side walls, as tall as the net there plus its tape; they
+  // join the steel. The net joins the mesh with finer cells, its top following the sag.
+  const netPostH = COURT.netPostHeight + TAPE_H;
+  for (const x of [-halfW + NET_POST_R, halfW - NET_POST_R]) {
+    steelParts.push(placed(new THREE.CylinderGeometry(NET_POST_R, NET_POST_R, netPostH, 10), x, netPostH / 2, 0));
   }
-  fenceParts.push(placed(cellPanel(court.width - 0.16, court.netHeight - 0.03, NET_CELL), 0, (court.netHeight - 0.03) / 2, 0));
+  const netH = COURT.netHeight - TAPE_H / 2; // up to the tape's underside at the centre
+  const netPanel = cellPanel(court.width, netH, NET_CELL, NET_SEGMENTS);
+  netPanel.translate(0, netH / 2, 0);
+  fenceParts.push(sagged(netPanel, true));
 
   const steel = new THREE.Mesh(
     merged(steelParts),
@@ -216,10 +250,10 @@ export function buildCourt(
   const fenceMesh = new THREE.Mesh(
       merged(fenceParts),
       new THREE.MeshStandardMaterial({
-        color: PALETTE.steel,
-        roughness: 0.6,
-        metalness: 0.5,
-        alphaMap: fenceTexture(),
+        color: PALETTE.mesh,
+        roughness: 0.55,
+        metalness: 0.4,
+        alphaMap: fenceTexture(quality),
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
@@ -281,7 +315,7 @@ interface EndMaterials {
 }
 
 const CUT_SECONDS = 0.3;
-const CUT_OPACITY = { fence: 0.12, steel: 0.15, glass: 0.05, glassSolid: 0.12 };
+const CUT_OPACITY = { fence: 0.12, steel: 0.15, glass: 0.05, glassSolid: 0.2 };
 
 /** The two back walls, one of which is faded out while the camera sits behind it. */
 export class EndWalls {

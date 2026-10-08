@@ -4,7 +4,9 @@ export const PALETTE = {
   surround: "#173a7a",
   lines: "#f4f7ff",
   steel: "#0d1016",
-  glassTint: "#9fb8d8",
+  /** Wire of the cage's mesh: dark galvanised metal, a shade lighter than the black steel frame. */
+  mesh: "#2a313c",
+  glassTint: "#9fc4dc",
   ground: "#070a12",
   sky: "#05070d",
   ledBackground: "#0b1a3a",

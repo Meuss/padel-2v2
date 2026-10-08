@@ -157,6 +157,15 @@ export function cageTopAt(x: number, z: number): number {
 }
 
 /**
+ * Height (m) of the net's top at x: COURT.netHeight at the centre, rising along a parabola
+ * (the sag of the cable) to COURT.netPostHeight at the posts on the side walls.
+ */
+export function netHeightAt(x: number): number {
+  const u = Math.min(1, Math.abs(x) / HALF_W);
+  return COURT.netHeight + (COURT.netPostHeight - COURT.netHeight) * u * u;
+}
+
+/**
  * Whether the ball has left the cage over the top: its centre is past a wall's plane and
  * above the cage there (it can only get past the plane by going over), or it is well
  * outside the court in any case.

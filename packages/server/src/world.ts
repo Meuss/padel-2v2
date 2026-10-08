@@ -9,7 +9,23 @@
  * engine, so the ball never gets pushed around incidentally.
  */
 import RAPIER from "@dimforge/rapier3d-compat";
-import { BALL, CAGE, COURT, GLASS, GRAVITY, MESH, SERVE, TICK_DT, sideX, type Vec3 } from "@padel/shared";
+import {
+  BALL,
+  CAGE,
+  COURT,
+  GLASS,
+  GRAVITY,
+  MESH,
+  SERVE,
+  TICK_DT,
+  netHeightAt,
+  sideX,
+  surfaceAt,
+  type Vec3,
+} from "@padel/shared";
+
+/** How many straight slices approximate the net's sagging top (≤ 1 mm from the curve). */
+const NET_SLICES = 10;
 
 export interface BallState {
   pos: Vec3;
@@ -23,6 +39,21 @@ export interface Contact {
   kind: ContactKind;
   pos: Vec3;
   speed: number;
+}
+
+const isWall = (c: Contact) => c.kind === "glass" || c.kind === "mesh";
+
+/**
+ * Keep at most one wall contact per step. A ball striking a seam between two panels touches
+ * both in the same step; it counts once, as the panel `surfaceAt` finds at the ball.
+ */
+function oneWallContact(contacts: Contact[]): Contact[] {
+  const walls = contacts.filter(isWall);
+  if (walls.length <= 1) return contacts;
+  const p = walls[0]!.pos;
+  const material = surfaceAt(p.x, p.y, p.z);
+  const keep = walls.find((c) => c.kind === material) ?? walls[0]!;
+  return contacts.filter((c) => !isWall(c) || c === keep);
 }
 
 export class PhysicsWorld {
@@ -61,7 +92,8 @@ export class PhysicsWorld {
       "floor",
     );
 
-    // The cage: one slab per panel, centred on the wall's plane, open above the panels.
+    // The cage: one slab per panel, open above the panels. Each slab sits just outside the
+    // court, so its inner face is exactly on the court's edge (where the client draws it).
     for (const seg of CAGE) {
       const halfH = (seg.y1 - seg.y0) / 2;
       const midY = (seg.y0 + seg.y1) / 2;
@@ -73,18 +105,26 @@ export class PhysicsWorld {
       desc.setRestitution(surface.restitution).setFriction(surface.friction);
       const body =
         seg.side === "back"
-          ? fixed((seg.x0 + seg.x1) / 2, midY, seg.end * halfL)
-          : fixed(sideX(seg.side), midY, (seg.z0 + seg.z1) / 2);
+          ? fixed((seg.x0 + seg.x1) / 2, midY, seg.end * (halfL + t))
+          : fixed(sideX(seg.side) * (1 + t / halfW), midY, (seg.z0 + seg.z1) / 2);
       add(desc, body, seg.material);
     }
 
-    add(
-      RAPIER.ColliderDesc.cuboid(halfW, COURT.netHeight / 2, 0.03).setRestitution(
-        0.3,
-      ),
-      fixed(0, COURT.netHeight / 2, 0),
-      "net",
-    );
+    // The net: wall to wall, its top following the sag (netHeightAt) as a chain of thin
+    // convex slices that share their edges, so there is no gap or step between them.
+    const netHalfT = 0.03;
+    const netBody = fixed(0, 0, 0);
+    for (let i = 0; i < NET_SLICES; i++) {
+      const xa = -halfW + (COURT.width * i) / NET_SLICES;
+      const xb = -halfW + (COURT.width * (i + 1)) / NET_SLICES;
+      const pts: number[] = [];
+      for (const x of [xa, xb]) {
+        for (const z of [-netHalfT, netHalfT]) pts.push(x, 0, z, x, netHeightAt(x), z);
+      }
+      const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(pts));
+      if (!desc) throw new Error("world: net slice hull failed");
+      add(desc.setRestitution(0.3), netBody, "net");
+    }
 
     const ballBody = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
@@ -130,7 +170,7 @@ export class PhysicsWorld {
       const kind = this.kinds.get(other);
       if (kind) contacts.push({ kind, pos: this.ballPosition(), speed });
     });
-    return contacts;
+    return oneWallContact(contacts);
   }
 
   ballState(): BallState {

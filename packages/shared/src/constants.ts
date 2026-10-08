@@ -20,7 +20,8 @@ export const COURT = {
   length: 20, // along z
   width: 10, // along x
   wallHeight: 4, // the tallest part of the cage (CAGE_HEIGHT.top in court.ts)
-  netHeight: 0.88,
+  netHeight: 0.88, // at the centre; the net sags from the posts (see netHeightAt in court.ts)
+  netPostHeight: 0.92, // the net's height at the posts, against the side walls
   glassHeight: 3, // the back-wall glass (CAGE_HEIGHT.glass); the side glass steps down to 2 m
 } as const;
 

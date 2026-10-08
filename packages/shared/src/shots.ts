@@ -61,6 +61,11 @@ export function dragKeep(t: number): number {
  * Vertical launch speed for a ball struck at contactY, distToNet from the net, approaching it
  * at speedTowardNet (the horizontal speed component toward the net), to pass the net plane
  * `clearance` above the tape. The time to the net allows for drag (to first order).
+ *
+ * The tape is taken at its centre height (COURT.netHeight), not at netHeightAt(crossing x):
+ * the crossing point is not known here (off-timing turns the aim afterwards), and the net
+ * rises only 4 cm to the posts, well inside both margins (0.45 m for Drives and Lobs, 0.15 m
+ * for Smashes), so a shot aimed down the line still clears it.
  */
 export function clearanceLift(
   contactY: number,
