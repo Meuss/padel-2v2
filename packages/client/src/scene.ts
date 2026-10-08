@@ -410,6 +410,8 @@ export class PadelScene {
       if (q !== this.quality) this.applyQuality(q);
     }
     this.arena.update(dt);
+    // The live Player cam's frame top would cut the end board and the floodlight banks in half.
+    this.arena.setSkylineVisible(this.camMode !== "player" || this.replaying);
     for (const a of this.players.values()) a.update(dt);
     const marked = this.camMode === "player" && !this.replaying && this.selfSlot ? this.players.get(this.selfSlot) : undefined;
     this.selfMarker.follow(marked?.root ?? null);

@@ -86,6 +86,8 @@ function tierHalf(side: Side, i: number, at: number): number {
 
 export class Arena {
   private ribbonTex: THREE.CanvasTexture;
+  /** The floodlight banks and the end boards: the top of the Broadcast cam's frame (see setSkylineVisible). */
+  private readonly skyline: THREE.Object3D[] = [];
   private ribbonCtx: CanvasRenderingContext2D;
   private messagesKey = "";
   private crowd: THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>;
@@ -153,6 +155,14 @@ export class Arena {
       shadow.map?.dispose();
       shadow.map = null;
     }
+  }
+
+  /**
+   * Show or hide the floodlight banks and the end boards. The Player cam's frame top runs right
+   * through them (half a sign, half a lamp bank), so it keeps them out; the Broadcast cam frames them whole.
+   */
+  setSkylineVisible(visible: boolean): void {
+    for (const o of this.skyline) o.visible = visible;
   }
 
   /** Update the ribbon text. Cheap: only redraws the canvas when the messages change. */
@@ -306,16 +316,17 @@ export class Arena {
         }
       }
     }
-    scene.add(
-      new THREE.Mesh(
-        merged(steel),
-        new THREE.MeshStandardMaterial({ color: PALETTE.steel, roughness: 0.5, metalness: 0.6 }),
-      ),
+    const masts = new THREE.Mesh(
+      merged(steel),
+      new THREE.MeshStandardMaterial({ color: PALETTE.steel, roughness: 0.5, metalness: 0.6 }),
     );
+    scene.add(masts);
     // Well above 1.0 (linear) so the bloom threshold catches the lamps and nothing on the court.
     const lamp = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
     lamp.color.setRGB(1.25, 1.25, 1.18);
-    scene.add(new THREE.Mesh(merged(panels), lamp));
+    const lamps = new THREE.Mesh(merged(panels), lamp);
+    scene.add(lamps);
+    this.skyline.push(masts, lamps);
   }
 
   private addLights(scene: THREE.Scene): void {
@@ -407,8 +418,8 @@ export class Arena {
       if (s > 0) g.rotateY(Math.PI);
       parts.push(g.translate(0, COURT.wallHeight + 0.15 + h / 2, s * (halfL + 0.6)));
     }
-    scene.add(
-      new THREE.Mesh(merged(parts), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })),
-    );
+    const boards = new THREE.Mesh(merged(parts), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    scene.add(boards);
+    this.skyline.push(boards);
   }
 }
