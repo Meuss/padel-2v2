@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Room } from "../src/room.js";
 import { fakeClient } from "./fakes.js";
 
@@ -138,6 +138,61 @@ describe("take seat during the toss", () => {
     }
     expect(s.last("welcome")).toMatchObject({ role: "player", slot: "A1" });
     expect(seatedBusy).toBe(false);
+    room.stop();
+  }, 30_000);
+});
+
+describe("the rematch vote", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("closes after 45 s unanswered, leaving the match over", async () => {
+    const { room, clients } = await fourHumans();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const p1 = clients[0]!;
+    room.debugEndMatch("B");
+    room.step();
+    expect(p1.last("vote")).toMatchObject({ active: true, kind: "rematch" });
+    const steps = (n: number) => {
+      for (let i = 0; i < n; i++) room.step();
+    };
+    vi.advanceTimersByTime(44_000);
+    steps(15);
+    expect(p1.last("vote")!.active).toBe(true);
+    vi.advanceTimersByTime(2_000);
+    steps(15);
+    expect(p1.last("vote")!.active).toBe(false);
+    expect(p1.last("match")!.phase).toBe("over");
+    room.stop();
+  });
+});
+
+describe("a deferred take seat", () => {
+  it("is dropped when its client disconnects before the point ends", async () => {
+    const room = await Room.create({ seed: SEED });
+    room.debugAddBots(1); // a bot in A1 serves
+    const humans = ["p1", "p2", "p3"].map((id) => {
+      const c = fakeClient(id);
+      room.addClient(c.client);
+      room.claimSlot(id, id);
+      return c;
+    });
+    const p1 = humans[0]!;
+    const s = fakeClient("s");
+    room.addClient(s.client);
+    let steps = 0;
+    while (p1.last("match")?.phase !== "rally" && steps++ < 60 * 10) room.step();
+    expect(p1.last("match")!.phase).toBe("rally");
+    expect(room.takeSeat("s")).toBe(true);
+    room.removeClient("s");
+    steps = 0;
+    while (p1.last("match")!.phase === "rally" && steps++ < 60 * 30) room.step();
+    for (let i = 0; i < 5; i++) room.step();
+    expect(s.last("welcome")).toBeNull();
+    const roster = p1.last("roster")!;
+    expect(roster.players.some((p) => p.id === "s")).toBe(false);
+    expect(roster.players.find((p) => p.slot === "A1")!.isBot).toBe(true);
     room.stop();
   }, 30_000);
 });
