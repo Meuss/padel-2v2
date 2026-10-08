@@ -720,6 +720,8 @@ for (const ev of ["pointerdown", "keydown"] as const) {
 mutebtn.addEventListener("click", toggleMute);
 blurAfterClick(mutebtn);
 showNickname();
+// Touch-only devices see a note that the game needs a keyboard and mouse (CSS shows it); it can be dismissed.
+document.querySelector("#desktop-note .dn-close")?.addEventListener("click", () => document.getElementById("desktop-note")?.remove());
 
 // Dev only: the query parameters (`pnpm shoot`); ?join=<name>&bots=<n> skips the nickname card.
 if (import.meta.env.DEV) {

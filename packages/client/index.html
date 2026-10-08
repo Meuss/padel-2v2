@@ -131,6 +131,11 @@
     <div id="scorebug" class="bug-panel"></div>
     <div id="banner"></div>
     <div id="serveprompt" class="bug-panel" role="status" aria-live="polite"></div>
+    <!-- Touch-only devices (phones, tablets): the game needs a keyboard and mouse. Shown by CSS. -->
+    <div id="desktop-note" role="note">
+      <span>Made for desktop · Play with a keyboard and mouse</span>
+      <button type="button" class="dn-close" aria-label="Dismiss">×</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

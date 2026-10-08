@@ -1781,3 +1781,47 @@ body.join-up #conn {
     width: min(100%, max(300px, 26 * var(--ju)));
   }
 }
+
+/* ── Desktop note: a thin strip on touch-only devices, which have no keyboard and mouse to play with ── */
+
+#desktop-note {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  #desktop-note {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: calc(5px + env(safe-area-inset-top, 0px)) 40px 5px;
+    background: var(--bug-navy);
+    border-bottom: 2px solid var(--optic);
+    color: var(--bug-white);
+    font-family: var(--font-broadcast);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 1.25;
+    text-align: center;
+    text-transform: uppercase;
+  }
+}
+#desktop-note .dn-close {
+  position: absolute;
+  right: 6px;
+  bottom: 1px;
+  width: 30px;
+  height: 26px;
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--bug-white);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
