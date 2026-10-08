@@ -87,13 +87,11 @@ export class Banner {
     root.setAttribute("aria-live", "polite");
     const rule = document.createElement("div");
     rule.className = "bn-rule";
-    const block = document.createElement("div");
-    block.className = "bn-block";
     this.title = document.createElement("div");
     this.title.className = "bn-title";
     this.sub = document.createElement("div");
     this.sub.className = "bn-sub";
-    root.replaceChildren(rule, block, this.title, this.sub);
+    root.replaceChildren(rule, this.title, this.sub);
   }
 
   /** True while a Banner is on screen (other lower-third graphics step aside). */

@@ -490,30 +490,19 @@
     clip-path 180ms cubic-bezier(0.7, 0, 0.84, 0),
     visibility 0s 180ms;
 }
+/* The top rule carries the tone: optic for a neutral Banner, rojo for a fault, the team's colour for its GAME or SET. */
 #banner[data-tone="fault"] {
+  --bn-accent: var(--rojo);
+}
+#banner[data-tone="team"][data-team="azul"] {
+  --bn-accent: var(--azul);
+}
+#banner[data-tone="team"][data-team="rojo"] {
   --bn-accent: var(--rojo);
 }
 .bn-rule {
   height: max(3px, 0.6vh);
   background: var(--bn-accent);
-}
-/* tone "team": a team-colour block down the left edge, under the rule. */
-.bn-block {
-  position: absolute;
-  top: max(3px, 0.6vh);
-  bottom: 0;
-  left: 0;
-  width: 0.6vw;
-  display: none;
-}
-#banner[data-tone="team"] .bn-block {
-  display: block;
-}
-#banner[data-team="azul"] .bn-block {
-  background: var(--azul);
-}
-#banner[data-team="rojo"] .bn-block {
-  background: var(--rojo);
 }
 .bn-title,
 .bn-sub {
