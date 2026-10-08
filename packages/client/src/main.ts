@@ -17,6 +17,7 @@ import {
   type MatchPhase,
   type Role,
   type ShotEvent,
+  type FaultHighlight,
   type Slot,
   type Team,
   type Vec2,
@@ -120,6 +121,8 @@ let devForceReplay = false;
 let devFinal = false;
 /** Dev only (?vote=reset|rematch): a synthetic open vote, for the vote panel. */
 let devVote: VoteMsg["kind"] | null = null;
+/** Dev only (?fault=<kind>[&faultAt=<ms>]): a synthetic fault, looped, or held `faultAt` ms in. */
+let devFault: { highlight: FaultHighlight; freezeMs: number | null } | null = null;
 
 let match: MatchMsg | null = null;
 
@@ -458,6 +461,8 @@ let finalDueAt: number | null = null;
 /** The Final card for the current match state (a dev sample with ?finalCard=1), or null. */
 function currentFinal(): FinalModel | null {
   if (import.meta.env.DEV && devFinal) return finalModel(devFinalMatch(), names);
+  // A dev fault (?fault=) is shot over whatever state the shared dev room is in.
+  if (import.meta.env.DEV && devFault) return null;
   return match ? finalModel(match, names) : null;
 }
 
@@ -660,6 +665,7 @@ const net = new Net({
     }
     renderVote();
     renderControls();
+    if (import.meta.env.DEV && devFault) startDevFault(devFault);
     if (msg.role === "player" && devBots > 0) {
       for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
       devBots = 0;
@@ -679,6 +685,7 @@ const net = new Net({
     if (finalCard.showing) updateFinal();
   },
   onMatch: (msg) => {
+    const prev = match;
     scoreBug.render(bugModel(msg, match));
     updateBanner(msg, match);
     updateDirector(msg, match);
@@ -692,7 +699,10 @@ const net = new Net({
     onMatchEvent(msg);
     if (import.meta.env.DEV && devAutoServe) autoServe();
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
-    if (hk && hk !== lastHighlightKey) scene.showFault(msg.highlight!);
+    // Not on the first update after a (re)connect: that point ended before we were watching.
+    // A dev fault (?fault=) keeps the screen to itself.
+    const devFaultOn = import.meta.env.DEV && devFault !== null;
+    if (hk && hk !== lastHighlightKey && prev && !devFaultOn) scene.showFault(msg.highlight!);
     lastHighlightKey = hk;
   },
   onVote,
@@ -833,6 +843,12 @@ if (import.meta.env.DEV) {
     play();
   }
   if (q.get("tray") === "1") setTray(true);
+  const fault = q.get("fault");
+  const highlight = fault === null ? null : devFaultHighlight(fault);
+  if (highlight) {
+    const at = q.get("faultAt");
+    devFault = { highlight, freezeMs: at === null ? null : Number(at) };
+  }
   // ?joinView=loading|outdated holds that join state; ?roomStatus=3,1 fakes the room line.
   const joinView = q.get("joinView");
   if (joinView === "loading") {
@@ -1261,4 +1277,60 @@ function devFinalMatch(): MatchMsg {
       durationS: 642,
     },
   };
+}
+
+// ── Dev fault animation (?fault=<kind>&faultAt=<ms>) ─────────────────────────
+
+let devFaultTimer: number | undefined;
+
+/** Play the synthetic fault once the players are on court: looped, or held at `freezeMs`. */
+function startDevFault(f: { highlight: FaultHighlight; freezeMs: number | null }): void {
+  if (devFaultTimer !== undefined) return;
+  // The samples sit in the z > 0 half: mirror them into the far half from our camera.
+  const play = () => {
+    const h = selfSide() === 1 ? mirrorFault(f.highlight) : { ...f.highlight };
+    if (h.slot) h.slot = selfTeam === "B" ? "A1" : "B1"; // an opponent, across the net
+    scene.devFault(h, f.freezeMs);
+  };
+  devFaultTimer = window.setTimeout(() => {
+    play();
+    if (f.freezeMs === null) devFaultTimer = window.setInterval(play, 2600);
+  }, 1500);
+}
+
+/** The same fault seen from the other end: z (and the box's half) flipped. */
+function mirrorFault(h: FaultHighlight): FaultHighlight {
+  const m: FaultHighlight = { ...h };
+  if (h.points) m.points = h.points.map((p) => ({ x: -p.x, y: p.y, z: -p.z }));
+  if (h.box) m.box = { xMin: -h.box.xMax, xMax: -h.box.xMin, zNear: h.box.zNear, zFar: h.box.zFar, side: h.box.side === 1 ? -1 : 1 };
+  return m;
+}
+
+/**
+ * A sample fault at typical positions, mostly in the z > 0 half (the far half from the first
+ * Player's camera): ground (double bounce), net, out, glass, mesh, player (double hit),
+ * serve (long, with the target box) and serve-net.
+ */
+function devFaultHighlight(kind: string): FaultHighlight | null {
+  const box = { xMin: -5, xMax: 0, zNear: 0, zFar: 6.95, side: 1 } as const;
+  switch (kind) {
+    case "ground":
+      return { kind: "ground", surface: "floor", points: [{ x: 1.4, y: 0.07, z: 4.6 }, { x: 2.6, y: 0.07, z: 7.4 }] };
+    case "net":
+      return { kind: "net", surface: "net", points: [{ x: -1.3, y: 0.74, z: 0.1 }] };
+    case "out":
+      return { kind: "out", points: [{ x: 1.6, y: 4.15, z: 10.08 }, { x: 1.1, y: 0.07, z: 7.2 }] };
+    case "glass":
+      return { kind: "wall", surface: "glass", points: [{ x: -1.6, y: 1.5, z: 9.93 }] };
+    case "mesh":
+      return { kind: "wall", surface: "mesh", points: [{ x: 4.93, y: 1.6, z: 2.6 }] };
+    case "player":
+      return { kind: "player", slot: "B1", points: [{ x: -2.5, y: 0, z: 5 }] };
+    case "serve":
+      return { kind: "out", surface: "floor", points: [{ x: -2.2, y: 0.07, z: 7.9 }], box };
+    case "serve-net":
+      return { kind: "net", surface: "net", points: [{ x: -2, y: 0.82, z: 0.1 }], box };
+    default:
+      return null;
+  }
 }

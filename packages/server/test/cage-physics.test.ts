@@ -44,7 +44,7 @@ function playOut(world: PhysicsWorld, engine: MatchEngine, start: number, ticks:
     now += TICK_MS;
     const cs = world.step();
     contacts.push(...cs);
-    engine.tick(now, world.ballPosition(), world.ballSpeed(), cs.map((c) => c.kind));
+    engine.tick(now, world.ballPosition(), world.ballSpeed(), cs);
   }
   return { msg: engine.toMessage(), contacts };
 }

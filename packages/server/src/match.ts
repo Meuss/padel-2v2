@@ -11,7 +11,8 @@
  * every Fault comes from what happened on court.
  *
  * When a point is lost it records a `reason` and a `highlight` (the offending
- * bounce / wall contact / player) so the client can show what went wrong.
+ * bounces / net or wall contact / exit point / player, at their true positions) so the
+ * client can show what went wrong.
  */
 import {
   COURT,
@@ -20,6 +21,7 @@ import {
   SERVICE_LINE_DIST,
   TOSS,
   leftCage,
+  netHeightAt,
   serveTarget,
   serveTiming,
   tossOffset,
@@ -35,6 +37,12 @@ import {
   type Vec3,
 } from "@padel/shared";
 import type { ContactKind } from "./world.js";
+
+/** A ball contact as the engine reads it: what was touched, and the ball's centre then. */
+export interface EngineContact {
+  kind: ContactKind;
+  pos: Vec3;
+}
 
 const HALF_W = COURT.width / 2;
 const HALF_L = COURT.length / 2;
@@ -57,7 +65,7 @@ export interface EngineAction {
 const TEAM_CALL: Record<Team, string> = { A: "AZUL", B: "ROJO" };
 const other = (t: Team): Team => (t === "A" ? "B" : "A");
 const sign = (z: number): -1 | 1 => (z < 0 ? -1 : 1);
-const out = (ball: Vec3): FaultHighlight => ({ kind: "out", pos: { ...ball } });
+const copy = (p: Vec3): Vec3 => ({ x: p.x, y: p.y, z: p.z });
 /** A cage panel's name in broadcast copy. */
 const WALL_CALL = { glass: "GLASS", mesh: "FENCE" } as const;
 const isWall = (kind: ContactKind): kind is "glass" | "mesh" => kind === "glass" || kind === "mesh";
@@ -119,6 +127,12 @@ export class MatchEngine {
   private bouncedTarget = false;
   private bounceCount = 0;
   private stallSince = 0;
+  /** Where the ball first bounced on the target side since the last hit (the serve's bounce included). */
+  private firstBounce: Vec3 | null = null;
+  /** The latest floor contact since the last hit. */
+  private lastBounce: Vec3 | null = null;
+  /** The first net contact since the last hit. */
+  private netContact: Vec3 | null = null;
   // Serve-in-flight tracking.
   private isServe = false;
   private serveNetTouched = false;
@@ -239,6 +253,11 @@ export class MatchEngine {
   /** The diagonal box the current serve must land in (null outside the serve phase). */
   serviceBox(): ServiceBox | null {
     if (this.phase !== "serve" || !this.serverSlot) return null;
+    return this.serviceBoxFor();
+  }
+
+  /** The box of the serve set up last, whatever the phase. */
+  private serviceBoxFor(): ServiceBox {
     return {
       xMin: this.targetXSign > 0 ? 0 : -HALF_W,
       xMax: this.targetXSign > 0 ? HALF_W : 0,
@@ -290,6 +309,7 @@ export class MatchEngine {
     this.bouncedTarget = false;
     this.bounceCount = 0;
     this.stallSince = 0;
+    this.forgetContacts();
     this.isServe = true;
     this.serveNetTouched = false;
     this.setEvent(null, null);
@@ -324,12 +344,42 @@ export class MatchEngine {
     this.bouncedTarget = false;
     this.bounceCount = 0;
     this.stallSince = 0;
+    this.forgetContacts();
     return true;
+  }
+
+  private forgetContacts(): void {
+    this.firstBounce = null;
+    this.lastBounce = null;
+    this.netContact = null;
+  }
+
+  /** Record a contact's position for the fault highlight. */
+  private note(c: EngineContact): void {
+    if (c.kind === "floor") this.lastBounce = copy(c.pos);
+    else if (c.kind === "net" && !this.netContact) this.netContact = copy(c.pos);
+  }
+
+  /** The net contact, or (never touched) the point on the net top in line with the ball. */
+  private netPoint(ball: Vec3): Vec3 {
+    return this.netContact ? copy(this.netContact) : { x: ball.x, y: netHeightAt(ball.x), z: 0 };
+  }
+
+  /** A double bounce's points: the first bounce on the target side (if any), then `second`. */
+  private doubleBounce(second: Vec3): FaultHighlight {
+    const points = this.firstBounce ? [copy(this.firstBounce), copy(second)] : [copy(second)];
+    return { kind: "ground", surface: "floor", points };
+  }
+
+  /** Out over the cage: the exit point, then the last bounce if there was one. */
+  private outOver(ball: Vec3): FaultHighlight {
+    return { kind: "out", points: this.lastBounce ? [copy(ball), copy(this.lastBounce)] : [copy(ball)] };
   }
 
   // ── Per-tick adjudication ──────────────────────────────────────────────────
 
-  tick(now: number, ball: Vec3, speed: number, contacts: ContactKind[]): EngineAction {
+  /** `contacts` are the surfaces the ball started touching this tick, with its centre then. */
+  tick(now: number, ball: Vec3, speed: number, contacts: readonly EngineContact[]): EngineAction {
     switch (this.phase) {
       case "warmup":
         return { hold: null };
@@ -338,7 +388,7 @@ export class MatchEngine {
         const t = (now - this.tossStartedAt) / 1000;
         const pos = this.tossPosition(t);
         if (t > TOSS.expireS) {
-          return this.serveFault(now, "MISSED THE TOSS", { kind: "player", slot: this.serverSlot! });
+          return this.serveFault(now, "MISSED THE TOSS", { kind: "player", slot: this.serverSlot!, points: [pos] });
         }
         return { hold: pos };
       }
@@ -358,22 +408,34 @@ export class MatchEngine {
     return (-this.hitterSide) as -1 | 1;
   }
 
-  private serveTick(now: number, ball: Vec3, contacts: ContactKind[]): EngineAction {
-    for (const kind of contacts) {
+  private serveTick(now: number, ball: Vec3, contacts: readonly EngineContact[]): EngineAction {
+    for (const c of contacts) {
+      const kind = c.kind;
+      this.note(c);
+      const at = c.pos;
       if (kind === "net") {
         this.serveNetTouched = true;
       } else if (isWall(kind)) {
         // Touched a wall before bouncing in the box — fault.
-        return this.serveFault(now, `SERVE HIT THE ${WALL_CALL[kind]} FIRST`, out(ball));
+        return this.serveFault(now, `SERVE HIT THE ${WALL_CALL[kind]} FIRST`, {
+          kind: "wall",
+          surface: kind,
+          points: [copy(at)],
+        });
       } else if (kind === "floor") {
         const inBox =
-          sign(ball.z) === this.targetSide &&
-          Math.abs(ball.z) > 0.1 &&
-          Math.abs(ball.z) <= SERVICE_LINE_DIST &&
-          sign(ball.x) === this.targetXSign &&
-          Math.abs(ball.x) <= HALF_W;
+          sign(at.z) === this.targetSide &&
+          Math.abs(at.z) > 0.1 &&
+          Math.abs(at.z) <= SERVICE_LINE_DIST &&
+          sign(at.x) === this.targetXSign &&
+          Math.abs(at.x) <= HALF_W;
         if (!inBox) {
-          return this.serveFault(now, "SERVE OUT — WRONG BOX", out(ball));
+          // Off the net cord and back on the server's side: the net is what went wrong.
+          const highlight: FaultHighlight =
+            this.serveNetTouched && sign(at.z) !== this.targetSide
+              ? { kind: "net", surface: "net", points: [this.netPoint(at)] }
+              : { kind: "out", surface: "floor", points: [copy(at)] };
+          return this.serveFault(now, "SERVE OUT — WRONG BOX", highlight);
         }
         if (this.serveNetTouched) {
           return this.serveLet(now); // net cord into the box → replay
@@ -383,17 +445,19 @@ export class MatchEngine {
         this.crossed = true;
         this.bouncedTarget = true;
         this.bounceCount = 1;
+        this.firstBounce = copy(at);
         return { hold: null };
       }
     }
     // Left the cage before bouncing — fault.
     if (leftCage(ball)) {
-      return this.serveFault(now, "SERVE LONG", out(ball));
+      return this.serveFault(now, "SERVE LONG", { kind: "out", points: [copy(ball)] });
     }
     return { hold: null };
   }
 
-  private serveFault(now: number, why: string, highlight: FaultHighlight): EngineAction {
+  private serveFault(now: number, why: string, fault: FaultHighlight): EngineAction {
+    const highlight: FaultHighlight = { ...fault, box: this.serviceBoxFor() };
     this.isServe = false;
     this.tossing = false;
     this.awaitingServe = false;
@@ -432,37 +496,35 @@ export class MatchEngine {
     now: number,
     ball: Vec3,
     speed: number,
-    contacts: ContactKind[],
+    contacts: readonly EngineContact[],
   ): EngineAction {
     const target = this.targetSideNow;
     if (!this.crossed && sign(ball.z) === target && Math.abs(ball.z) > 0.3) {
       this.crossed = true;
     }
 
-    for (const kind of contacts) {
-      const s = sign(ball.z);
+    for (const c of contacts) {
+      const kind = c.kind;
+      const s = sign(c.pos.z);
+      this.note(c);
       if (kind === "floor") {
         if (s === target && this.crossed) {
           this.bounceCount++;
           this.bouncedTarget = true;
           this.stallSince = 0;
           if (this.bounceCount >= 2) {
-            return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
-              kind: "ground",
-              pos: { ...ball },
-            });
+            return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", this.doubleBounce(c.pos));
           }
+          this.firstBounce = copy(c.pos);
         } else if (s === this.hitterSide) {
           if (!this.crossed) {
             return this.endPoint(now, other(this.hitterTeam!), "INTO THE NET", {
               kind: "net",
-              pos: { x: 0, y: COURT.netHeight, z: 0 },
+              surface: "net",
+              points: [this.netPoint(c.pos)],
             });
           }
-          return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
-            kind: "ground",
-            pos: { ...ball },
-          });
+          return this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", this.doubleBounce(c.pos));
         }
       } else if (isWall(kind)) {
         if (s === target && this.crossed && !this.bouncedTarget) {
@@ -470,7 +532,7 @@ export class MatchEngine {
             now,
             other(this.hitterTeam!),
             `HIT THE ${WALL_CALL[kind]} ON THE FULL`,
-            { kind: "wall", pos: { ...ball } },
+            { kind: "wall", surface: kind, points: [copy(c.pos)] },
           );
         }
       }
@@ -478,27 +540,19 @@ export class MatchEngine {
 
     if (leftCage(ball)) {
       return this.bouncedTarget
-        ? this.endPoint(now, this.hitterTeam!, "OUT OFF THE BOUNCE", {
-            kind: "out",
-            pos: { ...ball },
-          })
-        : this.endPoint(now, other(this.hitterTeam!), "OUT — OVER THE CAGE", {
-            kind: "out",
-            pos: { ...ball },
-          });
+        ? this.endPoint(now, this.hitterTeam!, "OUT OFF THE BOUNCE", this.outOver(ball))
+        : this.endPoint(now, other(this.hitterTeam!), "OUT — OVER THE CAGE", this.outOver(ball));
     }
 
     if (speed < 0.6 && ball.y < 0.25) {
       if (this.stallSince === 0) this.stallSince = now;
       else if (now - this.stallSince > 1500) {
         return this.bouncedTarget
-          ? this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", {
-              kind: "ground",
-              pos: { ...ball },
-            })
+          ? this.endPoint(now, this.hitterTeam!, "DOUBLE BOUNCE", this.doubleBounce(ball))
           : this.endPoint(now, other(this.hitterTeam!), "SHORT — DIDN'T CROSS", {
               kind: "net",
-              pos: { x: 0, y: COURT.netHeight, z: 0 },
+              surface: "net",
+              points: [this.netPoint(ball)],
             });
       }
     } else {

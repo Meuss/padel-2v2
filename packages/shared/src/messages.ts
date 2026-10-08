@@ -3,7 +3,7 @@
  * a `t` discriminator. Both sides import these types so the format cannot drift.
  */
 
-import type { ShotKind, Timing } from "./shots.js";
+import type { ServiceBox, ShotKind, Timing } from "./shots.js";
 
 export type Vec2 = { x: number; z: number };
 export type Vec3 = { x: number; y: number; z: number };
@@ -185,10 +185,23 @@ export type MatchPhase = "warmup" | "serve" | "rally" | "between" | "over";
 /** What to highlight when a point is lost, so the client can show why. */
 export type FaultKind = "ground" | "wall" | "net" | "player" | "out";
 
+/** What the ball touched at the fault: the floor, the net, or a cage panel by its material. */
+export type FaultSurface = "glass" | "mesh" | "net" | "floor";
+
 export interface FaultHighlight {
   kind: FaultKind;
-  pos?: Vec3; // world position of the offending bounce/contact
-  slot?: Slot; // offending player (double hit)
+  /**
+   * The true positions the fault animation marks (ball centre at the contact), in order:
+   * "ground" (double bounce): the first bounce on the target side, then the second (only the
+   * second when there was no first); "net": the net contact; "wall": the wall contact; "out":
+   * the exit point (over the cage, or the landing outside the box), then the last bounce if
+   * any; "player": where the toss was, for a missed toss.
+   */
+  points?: Vec3[];
+  surface?: FaultSurface;
+  slot?: Slot; // offending player (double hit, missed toss)
+  /** A serve fault: the service box the serve had to land in. */
+  box?: ServiceBox;
 }
 
 /**

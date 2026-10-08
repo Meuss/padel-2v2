@@ -14,6 +14,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   BALL,
+  INTERP_DELAY_MS,
   type ContactEvent,
   type CourtConfig,
   type FaultHighlight,
@@ -28,6 +29,7 @@ import { broadcastCamPose, CameraRig, cutawaySide, stepFrameShift } from "./worl
 import { AvatarFactory, glbModelSource, type Avatar } from "./world/avatar.js";
 import type { BoardState } from "./world/boards.js";
 import { buildCourt as buildCourtMeshes, type EndWalls } from "./world/court.js";
+import { FaultFxPlayer, type FaultFx } from "./world/faultfx.js";
 import { Feedback } from "./world/feedback.js";
 import { PALETTE } from "./world/palette.js";
 import { QualityMonitor, type Quality } from "./world/quality.js";
@@ -40,6 +42,8 @@ export class PadelScene {
   readonly scene = new THREE.Scene();
   /** Hit feedback: Timing arcs, ball trail, impact flashes, ground marker, Smash shake. */
   private feedback = new Feedback(this.scene, "high");
+  /** Fault animations: what lost the point, drawn where it happened. */
+  private faultFx = new FaultFxPlayer(this.scene);
   private renderer: THREE.WebGLRenderer;
   private camera: THREE.PerspectiveCamera;
   private ball: THREE.Mesh;
@@ -68,7 +72,6 @@ export class PadelScene {
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private arena: Arena;
   private lastRender = performance.now();
-  private markers: { mesh: THREE.Mesh; born: number; ttl: number }[] = [];
   private quality: Quality = "high";
   /** Picks the quality from real frame times; null once a level is forced. */
   private monitor: QualityMonitor | null = new QualityMonitor("high");
@@ -119,6 +122,12 @@ export class PadelScene {
     this.ball.position.set(0, 1, 0);
     this.scene.add(this.ball);
     this.scene.add(this.selfMarker.root);
+
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (reduced) {
+      this.faultFx.setReducedMotion(reduced.matches);
+      reduced.addEventListener("change", (e) => this.faultFx.setReducedMotion(e.matches));
+    }
 
     this.applyQuality("high");
     window.addEventListener("resize", this.onResize);
@@ -265,70 +274,35 @@ export class PadelScene {
     for (const e of contacts) this.feedback.contact(e);
   }
 
-  /** Clear the ball trail and ground marker (a new Welcome: the old ball is gone). */
+  /** Clear the ball trail, the ground marker and any fault animation (a new Welcome: the old ball is gone). */
   resetFeedback(): void {
     this.feedback.reset();
+    this.faultFx.stop();
   }
 
-  /** Flash a red highlight on whatever caused the lost point. */
-  showFault(h: FaultHighlight): void {
-    const now = performance.now();
-    const red = () =>
-      new THREE.MeshStandardMaterial({
-        color: 0xff3030,
-        emissive: 0xff2020,
-        emissiveIntensity: 0.9,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide,
-      });
-    const add = (mesh: THREE.Mesh) => {
-      this.scene.add(mesh);
-      this.markers.push({ mesh, born: now, ttl: 1900 });
-    };
-    const ringAt = (x: number, z: number) => {
-      const r = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.1, 12, 32), red());
-      r.rotation.x = -Math.PI / 2;
-      r.position.set(x, 0.07, z);
-      add(r);
-    };
-
-    let pos = h.pos;
-    if (h.kind === "player" && h.slot) {
-      const a = this.players.get(h.slot);
-      if (a) pos = { x: a.root.position.x, y: 0, z: a.root.position.z };
-    }
-
-    if (h.kind === "ground" || h.kind === "out" || h.kind === "player") {
-      if (pos) ringAt(pos.x, pos.z);
-    } else if (h.kind === "wall" && pos) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), red());
-      s.position.set(pos.x, Math.max(0.4, pos.y), pos.z);
-      add(s);
-      ringAt(pos.x, pos.z);
-    } else if (h.kind === "net") {
-      const w = this.court?.width ?? 10;
-      const nh = this.court?.netHeight ?? 0.88;
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, nh), red());
-      p.position.set(0, nh / 2, 0);
-      add(p);
-    }
+  /**
+   * Animate what lost the point. It starts `delayMs` from now: the match update arrives about
+   * INTERP_DELAY_MS before the rendered ball reaches the fault. A double hit is marked around
+   * the offending player's avatar.
+   */
+  showFault(h: FaultHighlight, delayMs = INTERP_DELAY_MS): void {
+    this.faultFx.play(this.faultFxFor(h), delayMs);
   }
 
-  private updateMarkers(now: number): void {
-    for (let i = this.markers.length - 1; i >= 0; i--) {
-      const m = this.markers[i]!;
-      const t = (now - m.born) / m.ttl;
-      if (t >= 1) {
-        this.scene.remove(m.mesh);
-        m.mesh.geometry.dispose();
-        (m.mesh.material as THREE.Material).dispose();
-        this.markers.splice(i, 1);
-        continue;
-      }
-      (m.mesh.material as THREE.MeshStandardMaterial).opacity = 0.9 * (1 - t);
-      m.mesh.scale.setScalar(1 + t * 0.7);
-    }
+  /** Dev only: play `h` at once and, with `freezeMs`, hold it that far in. */
+  devFault(h: FaultHighlight, freezeMs: number | null): void {
+    this.faultFx.freeze(freezeMs);
+    this.faultFx.play(this.faultFxFor(h), 0);
+  }
+
+  private faultFxFor(h: FaultHighlight): FaultFx {
+    let points = h.points ?? [];
+    const avatar = h.kind === "player" && h.slot ? this.players.get(h.slot) : undefined;
+    if (avatar) points = [{ x: avatar.root.position.x, y: 0, z: avatar.root.position.z }];
+    const fx: FaultFx = { kind: h.kind, points };
+    if (h.surface) fx.surface = h.surface;
+    if (h.box) fx.box = h.box;
+    return fx;
   }
 
   setSpectatorCamera(): void {
@@ -350,6 +324,8 @@ export class PadelScene {
     this.replaying = on;
     this.rig.setMode(on ? "broadcast" : this.camMode);
     this.feedback.reset();
+    // The replay re-shows the rally: the live fault animation must not linger over it.
+    this.faultFx.stop();
   }
 
   /** Mark the local player's avatar (null: nobody). Shown in the Player cam only, rallies included, never in a replay. */
@@ -432,7 +408,7 @@ export class PadelScene {
     for (const a of this.players.values()) a.update(dt);
     const marked = this.camMode === "player" && !this.replaying && this.selfSlot ? this.players.get(this.selfSlot) : undefined;
     this.selfMarker.follow(marked?.root ?? null);
-    this.updateMarkers(now);
+    this.faultFx.update(dt);
     this.rig.addShake(this.feedback.update(dt).shake);
     this.rig.update(dt);
     if (this.frameShift !== this.frameShiftTarget) {

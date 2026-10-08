@@ -663,7 +663,7 @@ export class Room {
       now,
       this.physics.ballPosition(),
       this.physics.ballSpeed(),
-      contacts.map((c) => c.kind),
+      contacts,
     );
     if (action.hold) this.holdBall(action.hold);
     this.trackMatch();
