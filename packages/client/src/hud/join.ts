@@ -13,15 +13,15 @@ export interface RoomCounts {
   watching: number;
 }
 
-/** "3 playing · 1 watching", or "Court is free" when nobody is there. Pure. */
+/** "2v2 · 3 playing · 1 watching", or "2v2 · court is free" when nobody is there. Pure. */
 export function countsLine({ playing, watching }: RoomCounts): string {
-  if (playing === 0 && watching === 0) return "Court is free";
-  return `${playing} playing · ${watching} watching`;
+  if (playing === 0 && watching === 0) return "2v2 · court is free";
+  return `2v2 · ${playing} playing · ${watching} watching`;
 }
 
-/** The room under the legend: "3 playing · 1 watching" from a roster, or the rule before one arrives. */
+/** The room under the legend: "2v2 · 3 playing · 1 watching" from a roster, or the rule before one arrives. */
 export function roomLine(roster: { players: readonly { isBot: boolean }[]; spectatorCount: number } | null): string {
-  if (!roster) return "First four play · the rest watch";
+  if (!roster) return "2v2 · first four play · the rest watch";
   // A bot's seat is anyone's for the taking: only people count as playing.
   return countsLine({ playing: roster.players.filter((p) => !p.isBot).length, watching: roster.spectatorCount });
 }

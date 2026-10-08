@@ -1464,24 +1464,12 @@ body.join-up #conn {
   width: max(250px, 20.6 * var(--ju));
 }
 
-.join-kicker {
-  color: var(--optic);
-  font-size: max(24px, 2.35 * var(--ju));
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  text-align: center;
-  text-transform: uppercase;
-}
-
 /*
  * Three stacked lines filling the column, on the comp's 120 px pitch. The comp's wordmark has tall,
  * narrow caps about 95 px high in its 893 px frame: Barlow Condensed 700 caps are 0.7em, so
  * 8.7 comp units (139 px) gives them and the comp's line width, and a 0.86 line height its pitch.
  */
 .join-mark {
-  /* Pulls the first line's leading up to the column top. */
-  margin-top: calc(-0.55 * var(--ju));
   font-family: var(--font-broadcast);
   font-size: max(88px, 8.7 * var(--ju));
   font-weight: 700;
@@ -1703,7 +1691,6 @@ body.join-up #conn {
 
 /* ── Entrance: the wordmark wipes up line by line, then the field, then PLAY (~400 ms) ── */
 
-.join-kicker,
 .join-mark span {
   animation: join-wipe 260ms var(--ease-out) backwards;
 }

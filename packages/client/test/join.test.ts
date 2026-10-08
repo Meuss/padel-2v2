@@ -6,19 +6,19 @@ const bot = { isBot: true };
 
 describe("roomLine", () => {
   it("counts the seated people and the watchers", () => {
-    expect(roomLine({ players: [human, human, human], spectatorCount: 1 })).toBe("3 playing · 1 watching");
+    expect(roomLine({ players: [human, human, human], spectatorCount: 1 })).toBe("2v2 · 3 playing · 1 watching");
   });
 
   it("leaves the bots out of the playing count: a bot's seat can be taken", () => {
-    expect(roomLine({ players: [human, bot, bot, bot], spectatorCount: 0 })).toBe("1 playing · 0 watching");
+    expect(roomLine({ players: [human, bot, bot, bot], spectatorCount: 0 })).toBe("2v2 · 1 playing · 0 watching");
   });
 
   it("says the court is free when nobody is there", () => {
-    expect(roomLine({ players: [bot, bot], spectatorCount: 0 })).toBe("Court is free");
+    expect(roomLine({ players: [bot, bot], spectatorCount: 0 })).toBe("2v2 · court is free");
   });
 
   it("invents nothing before the room is known", () => {
-    expect(roomLine(null)).toBe("First four play · the rest watch");
+    expect(roomLine(null)).toBe("2v2 · first four play · the rest watch");
   });
 });
 
@@ -66,8 +66,8 @@ describe("statusUrl", () => {
 
 describe("countsLine and parseStatus", () => {
   it("formats the counts the server reports", () => {
-    expect(countsLine({ playing: 2, watching: 5 })).toBe("2 playing · 5 watching");
-    expect(countsLine({ playing: 0, watching: 0 })).toBe("Court is free");
+    expect(countsLine({ playing: 2, watching: 5 })).toBe("2v2 · 2 playing · 5 watching");
+    expect(countsLine({ playing: 0, watching: 0 })).toBe("2v2 · court is free");
   });
 
   it("accepts only two non-negative whole counts", () => {
