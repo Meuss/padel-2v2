@@ -122,8 +122,8 @@ export const BOT = {
   smashMaxX: 1.5,
   /** Bots aim this fraction of the court length deep: the middle of the opposite half. */
   aimDepthFrac: 0.25,
-  /** An off-timed swing is this many perfect windows (SHOT.perfectWindowS) early or late. */
-  offTimingWindows: 2,
+  /** An off-timed swing is early or late by a uniform min to max perfect windows (SHOT.perfectWindowS). */
+  offTimingWindows: { min: 1, max: 3 },
   /** Of the off-timed swings, the share that are early (the rest are late). */
   earlyShare: 0.5,
 } as const;

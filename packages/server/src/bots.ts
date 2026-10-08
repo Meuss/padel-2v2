@@ -63,7 +63,7 @@ export interface BotContext<S extends BotSeat> {
  * Drive AI bots: hold a back-court lane, step to the ball only when it's a genuine incoming
  * ball in their half, and serve on their turn. A bot swings once per approach, when the
  * ball's time to closest approach reaches the swing point rolled for that approach: the
- * centre of the perfect window, or (BOT.offTimingChance) one window early or late.
+ * centre of the perfect window, or (BOT.offTimingChance) one to three windows early or late.
  */
 export function updateBots<S extends BotSeat>(ctx: BotContext<S>, now: number): void {
   const { match, seats } = ctx;
@@ -141,10 +141,15 @@ export function updateBots<S extends BotSeat>(ctx: BotContext<S>, now: number): 
   }
 }
 
-/** A bot's swing point (time to closest, s): perfect, or one window early or late. */
-function rollSwingAt(rng: Rng): number {
+/**
+ * A bot's swing point (time to closest, s): perfect, or early or late by anywhere from
+ * BOT.offTimingWindows.min to .max perfect windows (uniform), so its misses range from barely
+ * off to badly off.
+ */
+export function rollSwingAt(rng: Rng): number {
   if (rng() >= BOT.offTimingChance) return 0;
-  const offset = BOT.offTimingWindows * SHOT.perfectWindowS;
+  const { min, max } = BOT.offTimingWindows;
+  const offset = (min + (max - min) * rng()) * SHOT.perfectWindowS;
   return rng() < BOT.earlyShare ? offset : -offset;
 }
 
