@@ -1475,17 +1475,18 @@ body.join-up #conn {
 }
 
 /*
- * Three stacked lines filling the column, on the comp's 120 px pitch. The comp's wordmark is wider
- * and heavier than the broadcast caps: Barlow's Semi Condensed cut at 800 matches it.
+ * Three stacked lines filling the column, on the comp's 120 px pitch. The comp's wordmark has tall,
+ * narrow caps about 95 px high in its 893 px frame: Barlow Condensed 700 caps are 0.7em, so
+ * 8.7 comp units (139 px) gives them and the comp's line width, and a 0.86 line height its pitch.
  */
 .join-mark {
-  /* Pulls the first line's leading up under the kicker. */
+  /* Pulls the first line's leading up to the column top. */
   margin-top: calc(-0.55 * var(--ju));
-  font-family: "Barlow Semi Condensed", var(--font-broadcast);
-  font-size: max(76px, 7.45 * var(--ju));
-  font-weight: 800;
+  font-family: var(--font-broadcast);
+  font-size: max(88px, 8.7 * var(--ju));
+  font-weight: 700;
   letter-spacing: 0;
-  line-height: 1.03;
+  line-height: 0.86;
   text-align: center;
   text-transform: uppercase;
 }
