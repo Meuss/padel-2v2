@@ -305,6 +305,9 @@ export class Room {
     isBot: boolean,
     seat: Slot | undefined = SLOT_ORDER.find((s) => !this.slots.has(s)),
   ): PlayerSlot | null {
+    // One seat per connection: a repeated claim (or a join after a take seat) keeps the seat held.
+    const held = isBot ? null : this.seatOf(clientId);
+    if (held) return held;
     if (!seat) return null;
     const team = TEAM_OF[seat];
     const ps: PlayerSlot = {
@@ -433,13 +436,14 @@ export class Room {
   removeClient(id: string): void {
     this.clients.delete(id);
     this.pendingSeats = this.pendingSeats.filter((p) => p !== id);
-    for (const [slot, ps] of this.slots) {
+    let freed = false;
+    for (const [slot, ps] of [...this.slots]) {
       if (ps.clientId === id) {
         this.slots.delete(slot);
-        this.syncMatchRoster();
-        break;
+        freed = true;
       }
     }
+    if (freed) this.syncMatchRoster();
     // Always rebroadcast: removing a spectator changes the count without
     // freeing a slot, and freeing a slot also changes it.
     this.broadcastRoster();

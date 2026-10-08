@@ -49,6 +49,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    // Nothing but a join counts before the join: no seat, vote or bot from an unnamed socket.
+    if (!joined && msg.t !== "join") return;
+
     // NB: the per-frame `input` stream is NOT counted as activity, so an AFK
     // player still idles out. Only deliberate signals refresh the idle timer.
     if (msg.t === "join") {
