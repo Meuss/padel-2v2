@@ -28,9 +28,9 @@ import { Net, resolveServerUrl } from "./net.js";
 import { PadelScene } from "./scene.js";
 import { Predictor, fixedSteps } from "./predict.js";
 import { ScoreBug, bugModel } from "./hud/scorebug.js";
-import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
+import { Banner, BannerQueue, bannerForMatch } from "./hud/banner.js";
 import { servePrompt } from "./hud/copy.js";
-import { AutoServe, devBannerItem, devFaultHighlight, devFinalMatch, startDevFault, type DevFault } from "./dev.js";
+import { AutoServe, devFinalMatch, readDevParams, startDevFault, type DevParams } from "./dev.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { VotePanel, votePanelView } from "./hud/votepanel.js";
 import { blurAfterClick } from "./hud/button.js";
@@ -104,19 +104,8 @@ let carryShot: "drive" | "lob" | null = null;
 let carryServe = false;
 let selfYaw = 0;
 let outdated = false;
-let devBots = 0;
-/** Dev only (?autoserve=1): serve by itself so `pnpm shoot` can show rallies. */
-let devAutoServe = false;
-/** Dev only (?banner=<kind>): a Banner held on screen (rallies included) for screenshots. */
-let devBanner: BannerItem | null = null;
-/** Dev only (?forceReplay=1): every point is notable, so `pnpm shoot` can catch a replay. */
-let devForceReplay = false;
-/** Dev only (?finalCard=1): the Final card with synthetic stats and an open Rematch vote. */
-let devFinal = false;
-/** Dev only (?vote=reset|rematch): a synthetic open vote, for the vote panel. */
-let devVote: VoteMsg["kind"] | null = null;
-/** Dev only (?fault=<kind>[&faultAt=<ms>]): a synthetic fault, looped, or held `faultAt` ms in. */
-let devFault: DevFault | null = null;
+/** Dev only: what the query parameters ask for (read at bootstrap, after the nickname form opens). */
+let dev: DevParams | null = null;
 
 let match: MatchMsg | null = null;
 
@@ -175,8 +164,6 @@ try {
 } catch {
   // storage blocked (private mode): the card shows on each visit
 }
-/** Dev only (?controls=1): the card opens on every Welcome, seen or not, and holds through serves (screenshots). */
-let devControls = false;
 const controlsCard = new ControlsCard(document.getElementById("controls")!, closeControls);
 const ctlLegend = document.getElementById("ctl-legend")!;
 const controlsLegend = new ControlsLegend(ctlLegend, toggleControls);
@@ -217,7 +204,7 @@ function renderControls(): void {
   ctlLegend.classList.add("show");
   ctlLegend.classList.toggle("spectator", role === "spectator");
   controlsPending = false;
-  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && devControls)) {
+  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && dev?.controls)) {
     if (finalCard.showing || finalDueAt !== null) controlsPending = true;
     else openControls();
   } else if (controlsCard.showing) controlsCard.show(role); // redrawn for a new role
@@ -235,14 +222,14 @@ function deferControls(): void {
 function openPendingControls(): void {
   if (!controlsPending) return;
   controlsPending = false;
-  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && devControls)) openControls();
+  if (shouldShowCard(controlsSeen, role) || (import.meta.env.DEV && dev?.controls)) openControls();
 }
 
 /** On each match update: the card goes away once a serve goes in, and the legend dims for the rally. */
 function trackControlsPhase(phase: MatchPhase): void {
   document.body.classList.toggle("in-rally", phase === "rally");
   if (!controlsCard.showing) return;
-  if (controlsPhase === "serve" && phase === "rally" && !(import.meta.env.DEV && devControls)) closeControls();
+  if (controlsPhase === "serve" && phase === "rally" && !(import.meta.env.DEV && dev?.controls)) closeControls();
   controlsPhase = phase;
 }
 
@@ -333,7 +320,7 @@ function updateBanner(m: MatchMsg, prev: MatchMsg | null): void {
   const item = bannerForMatch(m, prev);
   if (item) bannerQueue.show(item, now);
   // Dev only (?banner=<kind>): hold a Banner on screen, rallies included, for screenshots.
-  if (import.meta.env.DEV && devBanner && !bannerQueue.current(now)) bannerQueue.show(devBanner, now);
+  if (import.meta.env.DEV && dev?.banner && !bannerQueue.current(now)) bannerQueue.show(dev.banner, now);
 }
 
 /** Once per frame: draw the Banner, and step the bug and serve prompt aside while it is up. */
@@ -367,8 +354,8 @@ function declineVote(): void {
 
 /** The vote as shown: the server's, or a dev sample (?vote=, ?finalCard=1). */
 function shownVote(): VoteMsg | null {
-  if (import.meta.env.DEV && (devVote || devFinal) && !vote?.active) {
-    const kind = devVote ?? "rematch";
+  if (import.meta.env.DEV && (dev?.vote || dev?.finalCard) && !vote?.active) {
+    const kind = dev?.vote ?? "rematch";
     const initiator = kind === "rematch" ? "MEUSS PADEL CLUB" : nickInput.value || "Player";
     return { t: "vote", active: true, kind, initiator, accepted: 1, needed: 2 };
   }
@@ -401,9 +388,9 @@ let finalDueAt: number | null = null;
 
 /** The Final card for the current match state (a dev sample with ?finalCard=1), or null. */
 function currentFinal(): FinalModel | null {
-  if (import.meta.env.DEV && devFinal) return finalModel(devFinalMatch(selfTeam ?? "A"), names);
+  if (import.meta.env.DEV && dev?.finalCard) return finalModel(devFinalMatch(selfTeam ?? "A"), names);
   // A dev fault (?fault=) is shot over whatever state the shared dev room is in.
-  if (import.meta.env.DEV && devFault) return null;
+  if (import.meta.env.DEV && dev?.fault) return null;
   return match ? finalModel(match, names) : null;
 }
 
@@ -521,7 +508,7 @@ const replay = new ReplayController({
     document.body.classList.toggle("replaying", on);
   },
   finalCardShowing: () => finalCardShowing,
-  forceNotable: () => import.meta.env.DEV && devForceReplay,
+  forceNotable: () => import.meta.env.DEV && dev?.forceReplay === true,
 });
 
 /**
@@ -581,12 +568,12 @@ const net = new Net({
     }
     renderVote();
     renderControls();
-    if (import.meta.env.DEV && devFault) {
-      startDevFault(devFault, { side: selfSide, team: () => selfTeam, play: (h, ms) => scene.devFault(h, ms) });
+    if (import.meta.env.DEV && dev?.fault) {
+      startDevFault(dev.fault, { side: selfSide, team: () => selfTeam, play: (h, ms) => scene.devFault(h, ms) });
     }
-    if (msg.role === "player" && devBots > 0) {
-      for (let i = 0; i < devBots; i++) net.send({ t: "addbot" });
-      devBots = 0;
+    if (msg.role === "player" && dev && dev.bots > 0) {
+      for (let i = 0; i < dev.bots; i++) net.send({ t: "addbot" });
+      dev.bots = 0;
     }
   },
   onRoster: (msg) => {
@@ -615,11 +602,11 @@ const net = new Net({
     renderServePrompt();
     renderBoards();
     onMatchEvent(msg);
-    if (import.meta.env.DEV && devAutoServe) autoServe?.onMatch(match);
+    if (import.meta.env.DEV && dev?.autoServe) autoServe?.onMatch(match);
     const hk = msg.highlight ? JSON.stringify(msg.highlight) : null;
     // Not on the first update after a (re)connect: that point ended before we were watching.
     // A dev fault (?fault=) keeps the screen to itself.
-    const devFaultOn = import.meta.env.DEV && devFault !== null;
+    const devFaultOn = import.meta.env.DEV && (dev?.fault ?? null) !== null;
     if (hk && hk !== lastHighlightKey && prev && !devFaultOn) scene.showFault(msg.highlight!);
     lastHighlightKey = hk;
   },
@@ -734,45 +721,23 @@ mutebtn.addEventListener("click", toggleMute);
 blurAfterClick(mutebtn);
 showNickname();
 
-// Dev-only: ?join=<name>&bots=<n> skips the nickname card (used by `pnpm shoot`).
+// Dev only: the query parameters (`pnpm shoot`); ?join=<name>&bots=<n> skips the nickname card.
 if (import.meta.env.DEV) {
-  const q = new URLSearchParams(location.search);
-  // ?quality=high|low pins the renderer quality (the shoot tool measures each level).
-  const quality = q.get("quality");
-  if (quality === "high" || quality === "low") scene.forceQuality(quality);
-  devForceReplay = q.get("forceReplay") === "1";
-  devFinal = q.get("finalCard") === "1";
-  devControls = q.get("controls") === "1";
+  const d = (dev = readDevParams(location.search));
+  if (d.quality) scene.forceQuality(d.quality);
   // A fresh headless profile has never closed the card: keep it off other screenshots.
-  if (q.get("join") !== null && !devControls) controlsSeen = true;
-  const voteKind = q.get("vote");
-  if (voteKind === "reset" || voteKind === "rematch") devVote = voteKind;
-  const forced = q.get("banner");
-  if (forced !== null) devBanner = devBannerItem(forced);
-  const auto = q.get("join");
-  if (auto !== null) {
-    devBots = Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0));
-    devAutoServe = q.get("autoserve") === "1";
-    nickInput.value = auto;
+  if (d.join !== null && !d.controls) controlsSeen = true;
+  if (d.join !== null) {
+    nickInput.value = d.join;
     play();
   }
-  if (q.get("tray") === "1") tray.set(true);
-  const fault = q.get("fault");
-  const highlight = fault === null ? null : devFaultHighlight(fault);
-  if (highlight) {
-    const at = q.get("faultAt");
-    devFault = { highlight, freezeMs: at === null ? null : Number(at) };
-  }
-  // ?joinView=loading|outdated holds that join state; ?roomStatus=3,1 fakes the room line.
-  const joinView = q.get("joinView");
-  if (joinView === "loading") {
+  if (d.tray) tray.set(true);
+  if (d.joinView === "loading") {
     openJoin("loading");
     showLoading("connecting");
-  } else if (joinView === "outdated") showOutdated();
-  const room = q.get("roomStatus")?.split(",").map(Number);
-  if (room?.length === 2) {
-    renderRoom({ players: Array.from({ length: room[0]! }, () => ({ isBot: false })), spectatorCount: room[1]! });
-  }
+  } else if (d.joinView === "outdated") showOutdated();
+  const room = d.roomStatus;
+  if (room) renderRoom({ players: Array.from({ length: room.playing }, () => ({ isBot: false })), spectatorCount: room.watching });
 }
 
 // ── Activity pings (throttled) so the server can idle-kick ───────────────────
@@ -919,7 +884,7 @@ scene.start((dt) => {
     carryShot = i.shot ?? carryShot;
     carryServe ||= i.serve;
     const aim =
-      import.meta.env.DEV && devAutoServe && selfLocked() && ownPos !== null
+      import.meta.env.DEV && dev?.autoServe && selfLocked() && ownPos !== null
         ? autoServe!.aimAtBoxCentre(ownPos)
         : ownPos !== null
         ? scene.aimFromPointer(i.pointer.x, i.pointer.y, ownPos.x, ownPos.z)

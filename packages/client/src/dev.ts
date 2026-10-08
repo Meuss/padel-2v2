@@ -12,9 +12,88 @@ import {
   type MatchMsg,
   type Team,
   type Vec2,
+  type VoteMsg,
 } from "@padel/shared";
 import type { BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
+
+// ── Dev query parameters ─────────────────────────────────────────────────────
+
+/** What the dev query parameters ask for (`pnpm shoot` and manual checks). */
+export interface DevParams {
+  /** ?quality=high|low pins the renderer quality (the shoot tool measures each level). */
+  quality: "high" | "low" | null;
+  /** ?forceReplay=1: every point is notable, so `pnpm shoot` can catch a replay. */
+  forceReplay: boolean;
+  /** ?finalCard=1: the Final card with synthetic stats and an open Rematch vote. */
+  finalCard: boolean;
+  /** ?controls=1: the controls card opens on every Welcome, seen or not, and holds through serves. */
+  controls: boolean;
+  /** ?vote=reset|rematch: a synthetic open vote, for the vote panel. */
+  vote: VoteMsg["kind"] | null;
+  /** ?banner=<kind>: a Banner held on screen (rallies included) for screenshots. */
+  banner: BannerItem | null;
+  /** ?join=<name>: skip the nickname card and join with this name. */
+  join: string | null;
+  /** &bots=<n> (0-3, with ?join): bots to add once seated; set to 0 once they are asked for. */
+  bots: number;
+  /** &autoserve=1 (with ?join): serve by itself so `pnpm shoot` can show rallies. */
+  autoServe: boolean;
+  /** ?tray=1: the emote tray open. */
+  tray: boolean;
+  /** ?fault=<kind>[&faultAt=<ms>]: a synthetic fault, looped, or held `faultAt` ms in. */
+  fault: DevFault | null;
+  /** ?joinView=loading|outdated holds that join state. */
+  joinView: "loading" | "outdated" | null;
+  /** ?roomStatus=<playing>,<watching> fakes the join screen's room line. */
+  roomStatus: { playing: number; watching: number } | null;
+}
+
+/** No dev parameters: what a production page always has. */
+export const NO_DEV_PARAMS: DevParams = {
+  quality: null,
+  forceReplay: false,
+  finalCard: false,
+  controls: false,
+  vote: null,
+  banner: null,
+  join: null,
+  bots: 0,
+  autoServe: false,
+  tray: false,
+  fault: null,
+  joinView: null,
+  roomStatus: null,
+};
+
+/** The dev parameters in a query string (`location.search`). Pure. */
+export function readDevParams(search: string): DevParams {
+  const q = new URLSearchParams(search);
+  const quality = q.get("quality");
+  const vote = q.get("vote");
+  const banner = q.get("banner");
+  const join = q.get("join");
+  const fault = q.get("fault");
+  const highlight = fault === null ? null : devFaultHighlight(fault);
+  const at = q.get("faultAt");
+  const joinView = q.get("joinView");
+  const room = q.get("roomStatus")?.split(",").map(Number);
+  return {
+    quality: quality === "high" || quality === "low" ? quality : null,
+    forceReplay: q.get("forceReplay") === "1",
+    finalCard: q.get("finalCard") === "1",
+    controls: q.get("controls") === "1",
+    vote: vote === "reset" || vote === "rematch" ? vote : null,
+    banner: banner === null ? null : devBannerItem(banner),
+    join,
+    bots: join === null ? 0 : Math.max(0, Math.min(3, Number(q.get("bots") ?? 0) || 0)),
+    autoServe: join !== null && q.get("autoserve") === "1",
+    tray: q.get("tray") === "1",
+    fault: highlight ? { highlight, freezeMs: at === null ? null : Number(at) } : null,
+    joinView: joinView === "loading" || joinView === "outdated" ? joinView : null,
+    roomStatus: room?.length === 2 ? { playing: room[0]!, watching: room[1]! } : null,
+  };
+}
 
 // ── Dev Banner (?banner=<kind>) ──────────────────────────────────────────────
 
