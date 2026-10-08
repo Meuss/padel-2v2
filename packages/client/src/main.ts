@@ -6,9 +6,7 @@
 import {
   COURT,
   NAME_MAX_LENGTH,
-  PLAYER,
   isNotable,
-  REACTIONS,
   sanitizeName,
   type ContactEvent,
   type InputMsg,
@@ -37,6 +35,7 @@ import { AutoServe, devBannerItem, devFaultHighlight, devFinalMatch, startDevFau
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
 import { VotePanel, votePanelView } from "./hud/votepanel.js";
 import { blurAfterClick } from "./hud/button.js";
+import { EmoteTray, NameTags, Reactions, type Project } from "./hud/overlays.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
@@ -66,7 +65,6 @@ scoreBug.render(bugModel(null, null));
 const bannerQueue = new BannerQueue();
 const banner = new Banner(document.getElementById("banner")!, bannerQueue);
 const servePromptEl = document.getElementById("serveprompt")!;
-const labels = document.getElementById("labels")!;
 const resetbtn = document.getElementById("resetbtn")!;
 const joinScreen = document.getElementById("join")!;
 const joinForm = document.getElementById("join-form") as HTMLFormElement;
@@ -77,8 +75,6 @@ const nickCount = document.getElementById("nick-count")!;
 const joinRoom = document.getElementById("join-room")!;
 const loadingTitle = document.getElementById("loading-title")!;
 const loadingHint = document.getElementById("loading-hint")!;
-const reactbar = document.getElementById("reactbar")!;
-const reactionsEl = document.getElementById("reactions")!;
 const mutebtn = document.getElementById("mutebtn")!;
 const replayTag = document.getElementById("replaytag")!;
 const finalCard = new FinalCard(document.getElementById("finalcard")!, { accept: acceptVote, decline: declineVote });
@@ -87,6 +83,10 @@ const votePanel = new VotePanel(document.getElementById("votepanel")!, { accept:
 const BASE = import.meta.env.BASE_URL;
 
 const scene = new PadelScene(app);
+const project: Project = (x, y, z) => scene.projectToScreen(x, y, z);
+const nameTags = new NameTags(document.getElementById("labels")!, project, (slot) => names.get(slot));
+const reactions = new Reactions(document.getElementById("reactions")!, BASE, project);
+const tray = new EmoteTray(document.getElementById("reactbar")!, BASE, (id) => net.send({ t: "react", id }));
 // The court is shared constants (the Welcome sends the same): build it now, so the join screen
 // shows the floodlit arena rather than empty stands.
 scene.buildCourt({ ...COURT });
@@ -142,7 +142,6 @@ function selfLocked(): boolean {
 }
 let lastHighlightKey: string | null = null;
 const names = new Map<Slot, { name: string; team: Team }>();
-const tags = new Map<Slot, HTMLDivElement>();
 
 /** Connection indicator, top-left: shown only while the socket is not open. */
 function renderConn(status: ConnStatus): void {
@@ -351,11 +350,6 @@ function updateBanner(m: MatchMsg, prev: MatchMsg | null): void {
 function tickBanner(): void {
   banner.update(performance.now());
   document.body.classList.toggle("banner-up", banner.showing);
-}
-
-/** Name tags show between points only: they fade out when a rally starts. */
-function renderTags(phase: MatchPhase | null): void {
-  labels.classList.toggle("rally", phase === "rally");
 }
 
 /** The open vote (reset or rematch), from the server. */
@@ -664,7 +658,7 @@ const net = new Net({
     match = msg;
     updateFinal();
     renderVote();
-    renderTags(msg.phase);
+    nameTags.setRally(msg.phase === "rally");
     trackControlsPhase(msg.phase);
     renderServePrompt();
     renderBoards();
@@ -684,7 +678,7 @@ const net = new Net({
   onOutdated: showOutdated,
   onReplaySkip: skipReplay,
   onReaction: (msg) => {
-    showReaction(msg.slot, msg.id);
+    reactions.show(msg.slot, msg.id);
     showBoardReaction(msg.id);
   },
   onSnapshot: (msg) => {
@@ -810,7 +804,7 @@ if (import.meta.env.DEV) {
     nickInput.value = auto;
     play();
   }
-  if (q.get("tray") === "1") setTray(true);
+  if (q.get("tray") === "1") tray.set(true);
   const fault = q.get("fault");
   const highlight = fault === null ? null : devFaultHighlight(fault);
   if (highlight) {
@@ -843,30 +837,6 @@ for (const ev of ["mousemove", "keydown", "mousedown"] as const) {
   window.addEventListener(ev, ping);
 }
 
-// Emote tray: the reactions in a strip, toggled with E (players only).
-function setTray(open: boolean): void {
-  reactbar.classList.toggle("open", open);
-  document.body.classList.toggle("tray-open", open);
-}
-
-for (const id of REACTIONS) {
-  const item = document.createElement("button");
-  item.type = "button";
-  item.className = "rb-item";
-  item.title = id;
-  item.setAttribute("aria-label", id);
-  const img = document.createElement("img");
-  img.src = `${BASE}reactions/${id}.png`;
-  img.alt = "";
-  item.append(img);
-  item.addEventListener("click", (e) => {
-    net.send({ t: "react", id });
-    setTray(false);
-    if (e.detail > 0) item.blur();
-  });
-  reactbar.append(item);
-}
-
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   const typing = e.target instanceof HTMLInputElement;
@@ -875,9 +845,9 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape") {
-    const closes = escapeCloses({ controlsCard: controlsCard.showing, tray: reactbar.classList.contains("open") });
+    const closes = escapeCloses({ controlsCard: controlsCard.showing, tray: tray.open });
     if (closes === "controls") closeControls();
-    else if (closes === "tray") setTray(false);
+    else if (closes === "tray") tray.set(false);
     if (closes) return;
   }
   if (e.code === "KeyB" && role === "player") net.send({ t: "addbot" });
@@ -886,7 +856,7 @@ window.addEventListener("keydown", (e) => {
     toggleMute();
   }
   else if (e.code === "KeyE" && role === "player" && !joinScreen.classList.contains("show")) {
-    setTray(!reactbar.classList.contains("open"));
+    tray.set(!tray.open);
   }
   // Enter skips the replay for everyone (Space stays the serve toss). A focused button keeps its Enter.
   else if (
@@ -899,57 +869,6 @@ window.addEventListener("keydown", (e) => {
     skipReplay();
   }
 });
-
-// ── Emote reactions over avatars ─────────────────────────────────────────────
-
-interface ActiveReaction {
-  slot: Slot;
-  el: HTMLImageElement;
-  born: number;
-}
-const reactionList: ActiveReaction[] = [];
-
-function showReaction(slot: Slot, id: string): void {
-  // One reaction per player at a time — replace any existing.
-  for (let i = reactionList.length - 1; i >= 0; i--) {
-    if (reactionList[i]!.slot === slot) {
-      reactionList[i]!.el.remove();
-      reactionList.splice(i, 1);
-    }
-  }
-  const img = document.createElement("img");
-  img.className = "reaction";
-  img.src = `${BASE}reactions/${id}.png`;
-  reactionsEl.appendChild(img);
-  reactionList.push({ slot, el: img, born: performance.now() });
-}
-
-function updateReactions(framePos: Map<string, { x: number; z: number }>): void {
-  const now = performance.now();
-  for (let i = reactionList.length - 1; i >= 0; i--) {
-    const r = reactionList[i]!;
-    const age = now - r.born;
-    if (age > 2600) {
-      r.el.remove();
-      reactionList.splice(i, 1);
-      continue;
-    }
-    const pos = framePos.get(r.slot);
-    if (!pos) {
-      r.el.style.display = "none";
-      continue;
-    }
-    const p = scene.projectToScreen(pos.x, PLAYER.height + 1.4, pos.z);
-    if (!p.visible) {
-      r.el.style.display = "none";
-      continue;
-    }
-    r.el.style.display = "block";
-    r.el.style.left = `${p.x}px`;
-    r.el.style.top = `${p.y}px`;
-    r.el.style.opacity = age > 2200 ? String(1 - (age - 2200) / 400) : "1";
-  }
-}
 
 /** Stereo pan for a world position, from where it is on screen. */
 function panAt(pos: { x: number; y: number; z: number }): number {
@@ -1101,7 +1020,7 @@ scene.start((dt) => {
       const z = mine ? predicted.z : p.pos.z;
       framePos.set(p.slot, slotPoint(p.slot, x, z));
       scene.setPlayer(p.slot, x, p.pos.y, z, mine ? selfYaw : p.yaw);
-      updateLabel(p.slot, x, z);
+      nameTags.update(p.slot, x, z);
       if (p.slot === selfSlot) {
         ownPos = setOwnPos(x, z);
         scene.focusCamera(x, p.pos.y, z);
@@ -1110,46 +1029,12 @@ scene.start((dt) => {
     for (const slot of seenSlots) {
       if (!present.has(slot)) {
         scene.removePlayer(slot as Slot);
-        removeLabel(slot as Slot);
+        nameTags.remove(slot as Slot);
         seenSlots.delete(slot);
       }
     }
   }
-  updateReactions(framePos);
+  reactions.update(framePos);
   tickFinal(now);
   tickBanner();
 });
-
-// ── Name labels above avatars ────────────────────────────────────────────────
-
-function updateLabel(slot: Slot, x: number, z: number): void {
-  const info = names.get(slot);
-  if (!info) {
-    removeLabel(slot);
-    return;
-  }
-  let el = tags.get(slot);
-  if (!el) {
-    el = document.createElement("div");
-    el.className = `nametag ${info.team}`;
-    labels.appendChild(el);
-    tags.set(slot, el);
-  }
-  el.textContent = info.name;
-  const p = scene.projectToScreen(x, PLAYER.height + 0.55, z);
-  if (p.visible) {
-    el.style.display = "block";
-    el.style.left = `${p.x}px`;
-    el.style.top = `${p.y}px`;
-  } else {
-    el.style.display = "none";
-  }
-}
-
-function removeLabel(slot: Slot): void {
-  const el = tags.get(slot);
-  if (el) {
-    el.remove();
-    tags.delete(slot);
-  }
-}
