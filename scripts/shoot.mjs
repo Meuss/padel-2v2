@@ -1,5 +1,6 @@
 // Headless screenshot + render stats tool.
 // Usage: pnpm shoot [--out dir] [--wait ms] [--spectator] [--autoserve] [--width n --height n] [--url u] [--quality high|low|auto] [--query k=v&…]
+//                   [--no-join [--type text]]
 // Each page is clicked once before the wait, to unlock audio (browsers need a gesture);
 // stats.json then includes `audio`, the dev-only count of sounds played by type.
 // --autoserve makes the player page serve by itself (toss, then a Drive at the apex), so bots rally.
@@ -7,6 +8,9 @@
 // automatic fallback, which would otherwise always drop to "low" mid-shot. "auto" pins
 // nothing, so the fallback runs (use a --wait longer than ~4.5 s to see it drop).
 // --query appends dev params to every page, e.g. --query banner=golden to hold a Banner.
+// --no-join loads without ?join, so the join screen shows over the live arena (join.png), and
+// --type then types that text into the nickname field. The join screen's dev params:
+// joinView=loading|outdated holds that state, roomStatus=<playing>,<watching> fakes the room line.
 import { parseArgs } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,6 +27,8 @@ const { values: o } = parseArgs({
     url: { type: "string", default: "http://localhost:5173" },
     quality: { type: "string", default: "high" },
     query: { type: "string", default: "" },
+    "no-join": { type: "boolean", default: false },
+    type: { type: "string" },
   },
 });
 if (!["high", "low", "auto"].includes(o.quality)) throw new Error(`--quality must be high, low or auto, got ${o.quality}`);
@@ -32,7 +38,7 @@ const width = Number(o.width);
 const height = Number(o.height);
 const chrome = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-async function shoot(browser, path, file, expectTags) {
+async function shoot(browser, path, file, expectTags, { click = true, type } = {}) {
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.error("[pageerror]", e.message));
   await page.goto(`${o.url}/${path}${qualityParam}`, { waitUntil: "domcontentloaded" });
@@ -46,7 +52,8 @@ async function shoot(browser, path, file, expectTags) {
     throw new Error(`Timed out waiting for scene and ${expectTags} nametags at ${path}`);
   }
   // A real (trusted) click: the page unlocks its AudioContext on the first pointerdown.
-  await page.mouse.click(Math.round(width / 2), Math.round(height / 2));
+  if (click) await page.mouse.click(Math.round(width / 2), Math.round(height / 2));
+  if (type !== undefined) await page.type("#nick-input", type);
   await new Promise((r) => setTimeout(r, wait));
   const fps = await page.evaluate(
     () =>
@@ -78,7 +85,12 @@ try {
   });
   const result = {};
   const autoserve = o.autoserve ? "&autoserve=1" : "";
-  result.player = await shoot(browser, `?join=Shooter&bots=3${autoserve}`, "player.png", 4);
+  if (o["no-join"]) {
+    // No click: it would take the focus off the nickname field.
+    result.join = await shoot(browser, "?", "join.png", 0, { click: false, type: o.type });
+  } else {
+    result.player = await shoot(browser, `?join=Shooter&bots=3${autoserve}`, "player.png", 4);
+  }
   if (o.spectator) result.spectator = await shoot(browser, "?join=Watcher", "spectator.png", 4);
   const json = JSON.stringify(result, null, 2);
   await writeFile(join(o.out, "stats.json"), json + "\n");

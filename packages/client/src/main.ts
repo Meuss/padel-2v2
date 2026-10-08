@@ -5,6 +5,7 @@
  */
 import {
   COURT,
+  NAME_MAX_LENGTH,
   PLAYER,
   REACTIONS,
   SERVICE_LINE_DIST,
@@ -34,6 +35,7 @@ import { ScoreBug, bugModel } from "./hud/scorebug.js";
 import { Banner, BannerQueue, bannerForMatch, type BannerItem } from "./hud/banner.js";
 import { bannerFor, goldenPointBanner } from "./hud/copy.js";
 import { FinalCard, finalModel, type FinalModel } from "./hud/finalcard.js";
+import { fillJoinLegend, nameCount, roomLine } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
 import {
   clipTime,
@@ -62,11 +64,13 @@ const servePrompt = document.getElementById("serveprompt")!;
 const labels = document.getElementById("labels")!;
 const resetbtn = document.getElementById("resetbtn")!;
 const votepanel = document.getElementById("votepanel")!;
-const nickname = document.getElementById("nickname")!;
+const joinScreen = document.getElementById("join")!;
+const joinForm = document.getElementById("join-form") as HTMLFormElement;
 const nickInput = document.getElementById("nick-input") as HTMLInputElement;
 const nickGo = document.getElementById("nick-go")!;
 const nickMsg = document.getElementById("nick-msg")!;
-const loading = document.getElementById("loading")!;
+const nickCount = document.getElementById("nick-count")!;
+const joinRoom = document.getElementById("join-room")!;
 const loadingTitle = document.getElementById("loading-title")!;
 const loadingHint = document.getElementById("loading-hint")!;
 const reactbar = document.getElementById("reactbar")!;
@@ -78,6 +82,9 @@ const finalCard = new FinalCard(document.getElementById("finalcard")!, { accept:
 const BASE = import.meta.env.BASE_URL;
 
 const scene = new PadelScene(app);
+// The court is shared constants (the Welcome sends the same): build it now, so the join screen
+// shows the floodlit arena rather than empty stands.
+scene.buildCourt({ ...COURT });
 if (import.meta.env.DEV) (window as unknown as { __padelScene: PadelScene }).__padelScene = scene;
 const interp = new InterpBuffer();
 /** Snapshot events, held until the rendered ball reaches them. */
@@ -488,9 +495,45 @@ function tickFinal(now: number): void {
   renderVote();
 }
 
+// ── Join screen: the nickname form, the loading state and the reload state, over the arena ──
+
+/** The court moves left by this much of the width, clear of the panel (as in the comp). */
+const JOIN_FRAME_SHIFT = 0.2;
+
+/** What the join screen shows; it is hidden while playing. */
+type JoinView = "form" | "loading" | "outdated";
+
+function openJoin(view: JoinView): void {
+  joinScreen.dataset.view = view;
+  joinScreen.classList.add("show");
+  document.body.classList.add("join-up");
+  scene.setFrameShift(JOIN_FRAME_SHIFT);
+}
+
+function closeJoin(): void {
+  joinScreen.classList.remove("show");
+  document.body.classList.remove("join-up");
+  scene.setFrameShift(0);
+}
+
+/** True while the join screen asks for something (a nickname or a reload), not while it is loading. */
+function joinAsking(): boolean {
+  return joinScreen.classList.contains("show") && joinScreen.dataset.view !== "loading";
+}
+
+/** The room line under the legend; null before any roster (the socket only opens on PLAY). */
+function renderRoom(roster: { players: readonly { isBot: boolean }[]; spectatorCount: number } | null): void {
+  joinRoom.textContent = roomLine(roster);
+}
+
+function renderNickCount(): void {
+  nickCount.textContent = nameCount(nickInput.value);
+  nickCount.classList.toggle("full", Array.from(nickInput.value).length >= NAME_MAX_LENGTH);
+}
+
 function showLoading(status: ConnStatus): void {
-  // Only relevant once the player has chosen to connect (nickname dismissed).
-  if (nickname.style.display !== "none") return;
+  // Only relevant once the player has chosen to connect (the form is dismissed).
+  if (joinAsking()) return;
   loadingTitle.textContent =
     status === "reconnecting" ? "Reconnecting…" : "Waking up the server…";
   loadingHint.textContent =
@@ -499,11 +542,11 @@ function showLoading(status: ConnStatus): void {
       : status === "reconnecting"
         ? "The server went to sleep — waking it back up…"
         : "Connecting…";
-  loading.classList.add("show");
+  openJoin("loading");
 }
 
 function hideLoading(): void {
-  loading.classList.remove("show");
+  if (joinScreen.dataset.view === "loading") closeJoin();
 }
 
 // ── Instant replay ───────────────────────────────────────────────────────────
@@ -618,6 +661,7 @@ const net = new Net({
     }
   },
   onRoster: (msg) => {
+    renderRoom(msg);
     renderWatching(msg.spectatorCount);
     renderTakeSeat(msg.seatOpen);
     names.clear();
@@ -650,14 +694,7 @@ const net = new Net({
   onKicked: (reason) => {
     showNickname(reason);
   },
-  onOutdated: () => {
-    outdated = true;
-    hideLoading();
-    nickInput.style.display = "none";
-    nickGo.textContent = "Reload";
-    nickMsg.textContent = "A new version of Meuss Padel Club is out.";
-    nickname.style.display = "flex";
-  },
+  onOutdated: showOutdated,
   onReplaySkip: skipReplay,
   onReaction: (msg) => {
     showReaction(msg.slot, msg.id);
@@ -680,7 +717,9 @@ const net = new Net({
 function showNickname(message = ""): void {
   hideLoading();
   nickMsg.textContent = message;
-  nickname.style.display = "flex";
+  // The socket is closed: the last roster is stale.
+  renderRoom(null);
+  openJoin("form");
   resetbtn.classList.remove("show");
   controlsCard.hide();
   controlsPending = false;
@@ -692,20 +731,35 @@ function showNickname(message = ""): void {
   nickInput.focus();
 }
 
+/** A newer client is live: the join screen offers a reload instead of the form. */
+function showOutdated(): void {
+  outdated = true;
+  hideLoading();
+  nickGo.textContent = "Reload";
+  nickMsg.textContent = "A new version of Meuss Padel Club is out.";
+  openJoin("outdated");
+  nickGo.focus();
+}
+
 function play(): void {
   if (outdated) {
     location.reload();
     return;
   }
   const name = sanitizeName(nickInput.value, "Player");
-  nickname.style.display = "none";
+  // Straight to the loading state: the wordmark stays put while the form makes way.
+  openJoin("loading");
   net.connect(name);
 }
 
-nickGo.addEventListener("click", play);
-nickInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") play();
+fillJoinLegend(document.getElementById("join-controls")!);
+renderRoom(null);
+// A form, so Enter in the field and the PLAY button both submit.
+joinForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  play();
 });
+nickInput.addEventListener("input", renderNickCount);
 resetbtn.addEventListener("click", (e) => {
   acceptVote();
   // After a mouse click, give Space back to the serve toss; keyboard users keep focus.
@@ -771,6 +825,16 @@ if (import.meta.env.DEV) {
     play();
   }
   if (q.get("tray") === "1") setTray(true);
+  // ?joinView=loading|outdated holds that join state; ?roomStatus=3,1 fakes the room line.
+  const joinView = q.get("joinView");
+  if (joinView === "loading") {
+    openJoin("loading");
+    showLoading("connecting");
+  } else if (joinView === "outdated") showOutdated();
+  const room = q.get("roomStatus")?.split(",").map(Number);
+  if (room?.length === 2) {
+    renderRoom({ players: Array.from({ length: room[0]! }, () => ({ isBot: false })), spectatorCount: room[1]! });
+  }
 }
 
 // ── Activity pings (throttled) so the server can idle-kick ───────────────────
@@ -827,7 +891,7 @@ window.addEventListener("keydown", (e) => {
   else if (e.code === "KeyM" && !(e.ctrlKey || e.metaKey || e.altKey) && !(e.target instanceof HTMLInputElement)) {
     toggleMute();
   }
-  else if (e.code === "KeyE" && role === "player" && nickname.style.display === "none") {
+  else if (e.code === "KeyE" && role === "player" && !joinScreen.classList.contains("show")) {
     setTray(!reactbar.classList.contains("open"));
   }
   // Enter skips the replay for everyone (Space stays the serve toss). A focused button keeps its Enter.

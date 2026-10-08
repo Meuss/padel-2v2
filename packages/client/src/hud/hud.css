@@ -1411,115 +1411,373 @@ body.final-up #ctl-legend,
   }
 }
 
-/* ── V1 elements, kept working until Task 7 replaces them ─────────────────── */
+/* ── Join screen (docs/design/v2-comp-join.png): the live arena, left; a navy panel, right ── */
 
-#nickname {
+/*
+ * One shell for three views (data-view): the nickname form, the loading state and the reload
+ * state. --ju is one comp pixel × 16 (the comp is 1600 wide): 1vw on a 16:9 screen, held by the
+ * height on a wider one, so the panel keeps the comp's proportions at 1280×720 and 2560×1440.
+ */
+#join {
+  --ju: min(1vw, 1.7778vh);
+  --join-muted: rgba(244, 247, 255, 0.68);
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(6, 9, 20, 0.82);
-  backdrop-filter: blur(8px);
   z-index: 10;
+  display: none;
+  justify-content: flex-end;
+  align-items: center;
+  /* The comp sits the column a little below centre. */
+  padding: calc(1.4 * var(--ju)) max(16px, 4.6 * var(--ju)) 0 0;
+  /* The arena stays sharp on the left; navy closes in from ~55%, solid behind the column. */
+  background: linear-gradient(
+    90deg,
+    rgba(15, 26, 51, 0) 46%,
+    rgba(15, 26, 51, 0.35) 55%,
+    rgba(15, 26, 51, 0.82) 62%,
+    var(--bug-navy) 69%
+  );
+  color: var(--bug-white);
+  font-family: var(--font-broadcast);
+  cursor: default;
+  animation: join-panel 320ms var(--ease-out) backwards;
 }
-#nickname .card {
-  background: rgba(14, 20, 40, 0.95);
-  border: 1px solid rgba(120, 160, 255, 0.3);
-  border-radius: 16px;
-  padding: 28px 32px;
-  text-align: center;
-  width: 320px;
+#join.show {
+  display: flex;
 }
-#nickname h1 {
-  font-size: 24px;
-  margin-bottom: 6px;
+/* The arena shows through on the left: keep the match graphics off it (the loading view says
+   what the connection pill would). */
+body.join-up #scorebug,
+body.join-up #conn {
+  visibility: hidden;
 }
-#nickname p {
-  color: #aab8d8;
-  font-size: 14px;
-  margin-bottom: 16px;
+
+.join-col {
+  display: flex;
+  flex-direction: column;
+  width: max(250px, 20.6 * var(--ju));
 }
-#nickname input {
-  width: 100%;
-  padding: 11px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(120, 160, 255, 0.35);
-  background: rgba(8, 12, 28, 0.8);
-  color: #fff;
-  font-size: 15px;
-  margin-bottom: 12px;
-}
-#nickname button {
-  width: 100%;
-  padding: 12px;
-  border: none;
-  border-radius: 10px;
-  background: #3b82f6;
-  color: #fff;
-  font-size: 15px;
+
+.join-kicker {
+  color: var(--optic);
+  font-size: max(24px, 2.35 * var(--ju));
   font-weight: 700;
-  cursor: pointer;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
 }
-#nickname button:hover {
-  background: #2f6fd8;
+
+/*
+ * Three stacked lines filling the column, on the comp's 120 px pitch. The comp's wordmark is wider
+ * and heavier than the broadcast caps: Barlow's Semi Condensed cut at 800 matches it.
+ */
+.join-mark {
+  /* Pulls the first line's leading up under the kicker. */
+  margin-top: calc(-0.55 * var(--ju));
+  font-family: "Barlow Semi Condensed", var(--font-broadcast);
+  font-size: max(76px, 7.45 * var(--ju));
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.03;
+  text-align: center;
+  text-transform: uppercase;
+}
+.join-mark span {
+  display: block;
+}
+
+/* ── The form ── */
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  margin-top: max(18px, 1.65 * var(--ju));
+}
+.join-label {
+  color: var(--join-muted);
+  font-size: max(16px, 1.6 * var(--ju));
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+#nick-input {
+  margin-top: max(7px, 0.65 * var(--ju));
+  height: max(38px, 3.1 * var(--ju));
+  padding: 0 0.55em;
+  background: rgba(244, 247, 255, 0.14);
+  border: 1px solid rgba(244, 247, 255, 0.34);
+  border-radius: 4px;
+  color: var(--bug-white);
+  caret-color: var(--optic);
+  font-family: var(--font-broadcast);
+  /* Sixteen W's still fit without scrolling. */
+  font-size: max(18px, 1.6 * var(--ju));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  outline: none;
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+#nick-input:hover {
+  border-color: rgba(244, 247, 255, 0.55);
+}
+/* The focus ring is an optic rule around the field. */
+#nick-input:focus {
+  background: rgba(244, 247, 255, 0.18);
+  border-color: var(--optic);
+  box-shadow: 0 0 0 1px var(--optic);
+}
+
+/* The kick or reload message on the left, the counter on the right. */
+.join-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  margin-top: max(4px, 0.35 * var(--ju));
+  font-size: max(15px, 1.4 * var(--ju));
+  font-weight: 500;
+  line-height: 1.15;
 }
 #nick-msg {
-  color: #ff9a8f;
-  font-size: 13px;
-  margin-top: 10px;
-  min-height: 16px;
+  color: #ff8a8b;
+}
+#nick-count {
+  margin-left: auto;
+  color: var(--join-muted);
+  font-variant-numeric: tabular-nums;
+}
+#nick-count.full {
+  color: var(--optic);
 }
 
-#loading {
-  position: fixed;
-  inset: 0;
+/* The one action on screen: an optic slab with navy caps (about 13:1). */
+#nick-go {
+  appearance: none;
+  margin-top: max(8px, 0.65 * var(--ju));
+  height: max(56px, 4.65 * var(--ju));
+  background: var(--optic);
+  border: none;
+  border-radius: 4px;
+  color: var(--bug-ink);
+  font-family: var(--font-broadcast);
+  font-size: max(32px, 3.1 * var(--ju));
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(3, 6, 14, 0.35);
+  transition:
+    background-color 140ms var(--ease-out),
+    transform 140ms var(--ease-out),
+    box-shadow 140ms var(--ease-out);
+}
+#nick-go:hover {
+  background: #edf86b;
+  box-shadow: 0 8px 22px rgba(3, 6, 14, 0.45);
+}
+#nick-go:active {
+  background: #d4e22f;
+  transform: translateY(1px);
+  box-shadow: 0 3px 10px rgba(3, 6, 14, 0.35);
+}
+#nick-go:focus-visible {
+  outline: 2px solid var(--bug-white);
+  outline-offset: 3px;
+}
+
+/* Reload state: the message takes the field's place, in white, above the RELOAD button. */
+#join[data-view="outdated"] .join-label,
+#join[data-view="outdated"] #nick-input,
+#join[data-view="outdated"] #nick-count {
   display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(6, 9, 20, 0.92);
-  backdrop-filter: blur(8px);
-  z-index: 11;
 }
-#loading.show {
-  display: flex;
-}
-#loading .card {
-  background: rgba(14, 20, 40, 0.95);
-  border: 1px solid rgba(120, 160, 255, 0.3);
-  border-radius: 16px;
-  padding: 32px 36px;
+#join[data-view="outdated"] #nick-msg {
+  color: var(--bug-white);
+  font-size: max(19px, 1.75 * var(--ju));
+  font-weight: 600;
+  line-height: 1.2;
   text-align: center;
-  width: 380px;
-  max-width: calc(100% - 32px);
+  width: 100%;
 }
-#loading .spinner {
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 20px;
-  border: 4px solid rgba(120, 160, 255, 0.22);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
+
+/* ── The loading state: in the form's place, under the same wordmark ── */
+
+.join-loading {
+  display: none;
+  margin-top: max(18px, 1.65 * var(--ju));
 }
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+#join[data-view="loading"] .join-form {
+  display: none;
+}
+#join[data-view="loading"] .join-loading {
+  display: block;
+}
+/* An optic rule with a lit segment running along it. */
+.join-bar {
+  position: relative;
+  height: max(3px, 0.25 * var(--ju));
+  overflow: hidden;
+  background: rgba(244, 247, 255, 0.16);
+}
+.join-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 38%;
+  background: var(--optic);
+  animation: join-bar 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.join-loading h2 {
+  margin-top: max(14px, 1.3 * var(--ju));
+  font-size: max(24px, 2.1 * var(--ju));
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.join-loading p {
+  margin-top: max(8px, 0.75 * var(--ju));
+  color: var(--join-muted);
+  font-size: max(16px, 1.5 * var(--ju));
+  font-weight: 500;
+  line-height: 1.25;
+  text-wrap: pretty;
+}
+.join-loading .join-hint {
+  color: var(--bug-white);
+  font-weight: 600;
+}
+
+/* ── Controls legend and the room line ── */
+
+/* Optic glyphs over optic caps, spread across the column. */
+.join-controls {
+  --glyph-h: max(24px, 2.45 * var(--ju));
+  display: flex;
+  justify-content: space-between;
+  margin-top: max(16px, 1.45 * var(--ju));
+  padding: 0 0.2em;
+  list-style: none;
+  color: var(--optic);
+}
+.join-controls li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: max(5px, 0.45 * var(--ju));
+}
+/* Glyphs sit on one baseline: the box is as tall as the WASD cluster. */
+.jc-glyph {
+  display: flex;
+  align-items: flex-end;
+  height: calc(var(--glyph-h) * 32 / 22);
+}
+.jc-label {
+  font-size: max(16px, 1.5 * var(--ju));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.join-room {
+  margin-top: max(20px, 1.85 * var(--ju));
+  color: var(--join-muted);
+  font-size: max(16px, 1.6 * var(--ju));
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+}
+
+/* ── Entrance: the wordmark wipes up line by line, then the field, then PLAY (~400 ms) ── */
+
+.join-kicker,
+.join-mark span {
+  animation: join-wipe 260ms var(--ease-out) backwards;
+}
+.join-mark span:nth-child(1) {
+  animation-delay: 40ms;
+}
+.join-mark span:nth-child(2) {
+  animation-delay: 80ms;
+}
+.join-mark span:nth-child(3) {
+  animation-delay: 120ms;
+}
+.join-label,
+#nick-input,
+.join-loading {
+  animation: join-rise 240ms var(--ease-out) 170ms backwards;
+}
+#nick-go {
+  animation: join-rise 240ms var(--ease-out) 230ms backwards;
+}
+.join-controls,
+.join-room {
+  animation: join-fade 300ms var(--ease-out) 280ms backwards;
+}
+
+@keyframes join-panel {
+  from {
+    opacity: 0;
   }
 }
-#loading h1 {
-  font-size: 20px;
-  margin-bottom: 10px;
+@keyframes join-wipe {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(0.18em);
+  }
+  to {
+    clip-path: inset(0 0 -10% 0);
+  }
 }
-#loading p {
-  color: #aab8d8;
-  font-size: 14px;
-  line-height: 1.55;
+@keyframes join-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
 }
-#loading .hint {
-  margin-top: 16px;
-  font-size: 12px;
-  color: #7d8db0;
-  min-height: 14px;
+@keyframes join-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes join-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(265%);
+  }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  #join,
+  #join *,
+  #join *::after {
+    animation: none;
+  }
+  /* Still say "working", without the motion. */
+  .join-bar::after {
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+/* Narrow or portrait windows: the arena behind, the column centred on a deeper scrim. */
+@media (max-aspect-ratio: 5/4) {
+  #join {
+    --ju: min(1.6vw, 1.3vh);
+    justify-content: center;
+    padding: 16px;
+    background: rgba(15, 26, 51, 0.9);
+  }
+  .join-col {
+    width: min(100%, max(300px, 26 * var(--ju)));
+  }
+}

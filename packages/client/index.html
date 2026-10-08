@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow+Semi+Condensed:wght@800&display=swap"
     />
     <!-- Page shell and in-world overlays only; the HUD styles live in src/hud/hud.css. -->
     <style>
@@ -62,7 +62,7 @@
       }
     </style>
   </head>
-  <body>
+  <body class="join-up">
     <div id="app"></div>
     <div id="labels"></div>
     <div id="reactions"></div>
@@ -93,25 +93,39 @@
     <div id="controls"></div>
     <!-- After #takeseat and #votepanel: it steps around them with sibling selectors. -->
     <div id="ctl-legend" role="group" aria-label="Controls"></div>
-    <div id="nickname">
-      <div class="card">
-        <h1>Meuss Padel Club</h1>
-        <p>Enter a nickname to play</p>
-        <input id="nick-input" maxlength="16" placeholder="Your nickname" autocomplete="off" />
-        <button id="nick-go">Play</button>
-        <div id="nick-msg"></div>
-      </div>
-    </div>
-    <div id="loading">
-      <div class="card">
-        <div class="spinner"></div>
-        <h1 id="loading-title">Waking up the server…</h1>
-        <p>
-          Meuss Padel Club runs on a free server that goes to sleep when no one is
-          playing. The first connection can take up to a minute while it wakes
-          up — hang tight, it's much faster after that.
-        </p>
-        <div class="hint" id="loading-hint">Connecting…</div>
+    <!-- The join screen, over the live arena: the form, the loading state and the reload state share it. -->
+    <div id="join" class="show" data-view="form">
+      <div class="join-col">
+        <p class="join-kicker">Open room · 2v2</p>
+        <h1 class="join-mark"><span>Meuss</span> <span>Padel</span> <span>Club</span></h1>
+        <form id="join-form" class="join-form" novalidate>
+          <label class="join-label" for="nick-input">Nickname</label>
+          <input
+            id="nick-input"
+            maxlength="16"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            enterkeyhint="go"
+            aria-describedby="nick-count nick-msg"
+          />
+          <div class="join-meta">
+            <p id="nick-msg" role="alert"></p>
+            <span id="nick-count">0/16</span>
+          </div>
+          <button id="nick-go" type="submit">Play</button>
+        </form>
+        <div class="join-loading" role="status" aria-live="polite">
+          <div class="join-bar" aria-hidden="true"></div>
+          <h2 id="loading-title">Waking up the server…</h2>
+          <p>
+            The free server sleeps when nobody plays. Waking it can take up to a minute; after
+            that it's quick.
+          </p>
+          <p class="join-hint" id="loading-hint">Connecting…</p>
+        </div>
+        <ul id="join-controls" class="join-controls" aria-label="Controls"></ul>
+        <p id="join-room" class="join-room"></p>
       </div>
     </div>
     <div id="scorebug" class="bug-panel"></div>

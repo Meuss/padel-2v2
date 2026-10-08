@@ -49,6 +49,8 @@ export class PadelScene {
   /** Duration of the frame being built, for avatar speed (set before the frame callback). */
   private frameDt = 1 / 60;
   private court: CourtConfig | null = null;
+  /** Sideways picture shift, a fraction of the width (setFrameShift). */
+  private frameShift = 0;
   private rig: CameraRig;
   private endWalls: EndWalls | null = null;
   private camTeam: Team = "A";
@@ -382,6 +384,24 @@ export class PadelScene {
     this.players.delete(slot);
   }
 
+  /**
+   * Slides the picture left by a fraction of its width, so the court sits in the part of the
+   * screen an overlay leaves open (the join screen's panel covers the right); 0 recentres it.
+   */
+  setFrameShift(fraction: number): void {
+    if (fraction === this.frameShift) return;
+    this.frameShift = fraction;
+    this.applyFrameShift();
+  }
+
+  private applyFrameShift(): void {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    // Both update the projection matrix.
+    if (this.frameShift !== 0) this.camera.setViewOffset(w, h, this.frameShift * w, 0, w, h);
+    else this.camera.clearViewOffset();
+  }
+
   private onResize = (): void => {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -390,7 +410,7 @@ export class PadelScene {
     // displayed at buffer size (2× on Retina) and only a corner is visible.
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.applyFrameShift();
     // The composer resizes its passes; UnrealBloomPass halves the buffer size itself,
     // so its first mip already runs at resolution / 2.
     if (this.composer) {
