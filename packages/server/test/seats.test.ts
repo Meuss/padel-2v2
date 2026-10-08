@@ -91,3 +91,19 @@ describe("the server leaving between points", () => {
     room.stop();
   });
 });
+
+describe("take seat", () => {
+  it("sends the new player the match and the vote after its Welcome, as a join does", async () => {
+    const room = await Room.create({ seed: SEED });
+    room.debugAddBots(4);
+    room.step();
+    const s = fakeClient("s");
+    room.addClient(s.client);
+    room.claimSlot("s", "s");
+    const from = s.messages().length;
+    expect(room.takeSeat("s")).toBe(true);
+    const types = s.messages().slice(from).map((m) => m.t).filter((t) => t !== "roster" && t !== "snapshot");
+    expect(types.slice(0, 3)).toEqual(["welcome", "match", "vote"]);
+    room.stop();
+  });
+});

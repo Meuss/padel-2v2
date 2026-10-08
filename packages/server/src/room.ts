@@ -408,8 +408,13 @@ export class Room {
       ps.yaw = bot.yaw;
       console.log(`[seat] ${client.name} replaced ${bot.name} as ${slot}`);
     }
+    // As on join: the Welcome, then the match and the vote, so the new player's HUD is current.
     try {
-      if (client.ws.readyState === client.ws.OPEN) client.ws.send(encode(this.welcomeMessage(clientId)));
+      if (client.ws.readyState === client.ws.OPEN) {
+        client.ws.send(encode(this.welcomeMessage(clientId)));
+        client.ws.send(encode(this.matchMessage()));
+        client.ws.send(encode(this.voteMessage()));
+      }
     } catch {
       /* ignore */
     }
