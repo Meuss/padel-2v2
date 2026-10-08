@@ -6,7 +6,6 @@
 import {
   COURT,
   NAME_MAX_LENGTH,
-  isNotable,
   sanitizeName,
   type ContactEvent,
   type InputMsg,
@@ -38,16 +37,7 @@ import { blurAfterClick } from "./hud/button.js";
 import { EmoteTray, NameTags, Reactions, type Project } from "./hud/overlays.js";
 import { capName, countsLine, fetchRoomCounts, fillJoinLegend, nameCount, roomLine, type RoomCounts } from "./hud/join.js";
 import { CONTROLS_SEEN_KEY, ControlsCard, ControlsLegend, escapeCloses, persistSeenOnClose, shouldShowCard } from "./hud/controls.js";
-import {
-  clipTime,
-  isPlaying,
-  nextState,
-  pointOutcome,
-  type DirectorEvent,
-  type DirectorState,
-} from "./replay/director.js";
-import { ReplayRecorder } from "./replay/recorder.js";
-import { ReplayPlayer } from "./replay/player.js";
+import { FINAL_DELAY_MS, ReplayController, finalDue } from "./replay/controller.js";
 import "./hud/hud.css";
 
 // Asked before anything is built: the request goes out (and wakes a sleeping server) while the
@@ -406,8 +396,6 @@ function renderVote(): void {
 
 // ── Final card ───────────────────────────────────────────────────────────────
 
-/** The Final card comes this long after the Set Banner (or when the match-point replay ends). */
-const FINAL_DELAY_MS = 1200;
 /** When the Final card is due (local clock), or null when none is waiting. */
 let finalDueAt: number | null = null;
 
@@ -441,7 +429,7 @@ function updateFinal(): void {
 
 /** Once per frame: show the due Final card once the director is back to live; it replaces the Set Banner. */
 function tickFinal(now: number): void {
-  if (finalDueAt === null || now < finalDueAt || director.mode !== "live") return;
+  if (!finalDue(finalDueAt, now, replay.live)) return;
   finalDueAt = null;
   const model = currentFinal();
   if (!model) return;
@@ -525,50 +513,16 @@ function hideLoading(): void {
 
 // ── Instant replay ───────────────────────────────────────────────────────────
 
-/** The last seconds of play, recorded as snapshots arrive. */
-const recorder = new ReplayRecorder();
-const replayPlayer = new ReplayPlayer(recorder);
-let director: DirectorState = { mode: "live" };
-/** Whether the replay view (Broadcast cam, recorded play, REPLAY tag) is on screen. */
-let replayShown = false;
 /** True while the Final card is up: no replay starts over it. */
 let finalCardShowing = false;
-const TICK: DirectorEvent = { t: "tick" };
-const SKIP: DirectorEvent = { t: "skip" };
-
-/**
- * On each match update: a point that just ended may queue a replay of its clip (notable
- * points only), and a toss or a rally start cuts a replay back to live.
- */
-function updateDirector(m: MatchMsg, prev: MatchMsg | null): void {
-  const now = performance.now();
-  const outcome = pointOutcome(m, prev);
-  const end = recorder.newestMs;
-  if (outcome && end !== null) {
-    const notable = (import.meta.env.DEV && devForceReplay) || isNotable({ ...recorder.pointSummary(outcome.winner), ...outcome });
-    const pointStartMs = recorder.pointStartMs;
-    director = nextState(director, { t: "pointEnd", notable, pointStartMs, pointEndMs: end, finalCard: finalCardShowing }, now);
-  }
-  director = nextState(director, { t: "phase", phase: m.phase, tossing: m.tossing }, now);
-  syncReplay(now);
-}
-
-/** Show or leave the replay view to match the director (call after every director change). */
-function syncReplay(now: number): void {
-  const on = isPlaying(director, now);
-  if (on === replayShown) return;
-  replayShown = on;
-  if (on && director.mode === "replay") replayPlayer.start(director.fromMs);
-  scene.setReplay(on);
-  document.body.classList.toggle("replaying", on);
-}
-
-/** A Player skipped (us, or anyone through the server): back to live at once. */
-function skipReplay(): void {
-  const now = performance.now();
-  director = nextState(director, SKIP, now);
-  syncReplay(now);
-}
+const replay = new ReplayController({
+  setView: (on) => {
+    scene.setReplay(on);
+    document.body.classList.toggle("replaying", on);
+  },
+  finalCardShowing: () => finalCardShowing,
+  forceNotable: () => import.meta.env.DEV && devForceReplay,
+});
 
 /**
  * A recorded frame's events, as the replay reaches them: swings, hit feedback and sound, as
@@ -595,12 +549,10 @@ const net = new Net({
     predictor.reset();
     interp.reset();
     events.clear();
-    recorder.reset();
     // Forget the old match state too: the first update after a (re)connect never counts as a
     // point end, so a near-empty recording is never replayed.
     match = null;
-    director = { mode: "live" };
-    syncReplay(performance.now());
+    replay.reset(performance.now());
     scene.resetFeedback();
     stepAccum = 0;
     hideLoading();
@@ -654,7 +606,7 @@ const net = new Net({
     const prev = match;
     scoreBug.render(bugModel(msg, match));
     updateBanner(msg, match);
-    updateDirector(msg, match);
+    replay.onMatch(msg, match, performance.now());
     match = msg;
     updateFinal();
     renderVote();
@@ -676,14 +628,14 @@ const net = new Net({
     showNickname(reason);
   },
   onOutdated: showOutdated,
-  onReplaySkip: skipReplay,
+  onReplaySkip: () => replay.skip(performance.now()),
   onReaction: (msg) => {
     reactions.show(msg.slot, msg.id);
     showBoardReaction(msg.id);
   },
   onSnapshot: (msg) => {
     interp.add(msg);
-    recorder.add(msg);
+    replay.onSnapshot(msg);
     if (import.meta.env.DEV) autoServe?.onSnapshot(msg.serverTime);
     events.schedule(msg.serverTime, msg.shots ?? [], msg.contacts ?? []);
     if (selfSlot) {
@@ -862,11 +814,11 @@ window.addEventListener("keydown", (e) => {
   else if (
     (e.code === "Enter" || e.code === "NumpadEnter") &&
     role === "player" &&
-    replayShown &&
+    replay.showing &&
     !(e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement)
   ) {
     net.send({ t: "skipreplay" });
-    skipReplay();
+    replay.skip(performance.now());
   }
 });
 
@@ -931,7 +883,7 @@ const autoServe = import.meta.env.DEV
         // We are locked at the serve spot: no movement.
         if (ownPos === null) return;
         const msg = sendInput({ x: 0, z: 0 }, autoServe!.aimAtBoxCentre(ownPos), extra);
-        if (msg.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
+        if (msg.shot && selfSlot && !replay.showing) scene.triggerSwing(selfSlot);
       },
     })
   : null;
@@ -981,22 +933,21 @@ scene.start((dt) => {
       carryServe = false;
     }
     // During a replay our avatar shows recorded play: no live swing on it.
-    if (i.shot && selfSlot && !replayShown) scene.triggerSwing(selfSlot);
+    if (i.shot && selfSlot && !replay.showing) scene.triggerSwing(selfSlot);
   }
 
   interp.update(dt * 1000);
   const now = performance.now();
-  director = nextState(director, TICK, now);
-  syncReplay(now);
-  events.drain(interp.renderTime, replayShown ? dropEvents : playEvents, EVENT_STALE_MS);
+  replay.tick(now);
+  events.drain(interp.renderTime, replay.showing ? dropEvents : playEvents, EVENT_STALE_MS);
   const s = interp.sample();
   framePos.clear();
-  if (replayShown && director.mode === "replay") {
+  if (replay.showing) {
     // Recorded play through the Broadcast cam; our predicted position keeps tracking live input.
     const predicted = predictor.renderPosition(dt);
     if (predicted) ownPos = setOwnPos(predicted.x, predicted.z);
-    if (replayPlayer.advance(clipTime(director, now), playReplayEvents)) {
-      const pose = replayPlayer.pose;
+    const pose = replay.pose(now, playReplayEvents);
+    if (pose) {
       scene.setBall(pose.ball.x, pose.ball.y, pose.ball.z);
       scene.setBallTarget(pose.ball.x, pose.ball.z);
       scene.setBallSide(pose.ball.z);

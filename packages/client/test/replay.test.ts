@@ -20,6 +20,7 @@ import {
   type DirectorState,
 } from "../src/replay/director.js";
 import { RECORD_MS, ReplayRecorder } from "../src/replay/recorder.js";
+import { FINAL_DELAY_MS, finalDue } from "../src/replay/controller.js";
 import { ReplayPlayer } from "../src/replay/player.js";
 
 function msg(over: Partial<MatchMsg> = {}): MatchMsg {
@@ -262,5 +263,29 @@ describe("a Bot's toss after a notable point", () => {
     expect(nextState(s, { t: "tick" }, botToss - 20).mode).toBe("replay");
     expect(nextState(s, { t: "tick" }, botToss).mode).toBe("live");
     if (s.mode === "replay") expect(clipTime(s, botToss)).toBeCloseTo(pointEndMs);
+  });
+});
+
+describe("finalDue: the Final card's timing", () => {
+  it("opens FINAL_DELAY_MS after the match ends when there is no replay", () => {
+    const T = 1_000;
+    const dueAt = T + FINAL_DELAY_MS;
+    expect(finalDue(dueAt, dueAt - 1, true)).toBe(false);
+    expect(finalDue(dueAt, dueAt, true)).toBe(true);
+    expect(finalDue(null, dueAt, true)).toBe(false);
+  });
+
+  it("waits for the match point's replay to end, then opens", () => {
+    const T = 1_000;
+    const dueAt = T + FINAL_DELAY_MS;
+    let s: DirectorState = { mode: "live" };
+    s = nextState(s, { t: "pointEnd", notable: true, pointStartMs: 10_000, pointEndMs: 13_000, finalCard: false }, T);
+    const now = dueAt + 100;
+    s = nextState(s, { t: "tick" }, now);
+    expect(s.mode).toBe("replay");
+    expect(finalDue(dueAt, now, s.mode === "live")).toBe(false);
+    const end = T + replayLengthMs(10_000, 13_000);
+    s = nextState(s, { t: "tick" }, end);
+    expect(finalDue(dueAt, end, s.mode === "live")).toBe(true);
   });
 });
