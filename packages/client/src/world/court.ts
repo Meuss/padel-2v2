@@ -1,17 +1,20 @@
 /**
- * The playing court: blue turf and its surround, painted lines, the black steel
- * and glass cage with mesh fence, and the net. Static geometry is merged by
- * material so the whole court costs a handful of draw calls.
+ * The playing court: blue turf and its surround, painted lines, the regulation
+ * cage (glass, mesh and black steel, laid out by the shared `CAGE` the server
+ * also collides with), and the net. Static geometry is merged by material so
+ * the whole court costs a handful of draw calls.
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import type { CourtConfig } from "@padel/shared";
+import { CAGE, CAGE_GATES, cageTopAt, sideX, type CourtConfig } from "@padel/shared";
 import { PALETTE } from "./palette.js";
 import type { Quality } from "./quality.js";
 
 const LINE_W = 0.05;
 const POST = 0.1;
 const RAIL = 0.08;
+/** Section of a gate's frame bars. */
+const GATE_BAR = 0.05;
 /** Metres per fence cell, and per (finer) net cell. */
 const FENCE_CELL = 0.18;
 const NET_CELL = 0.07;
@@ -95,8 +98,6 @@ export function buildCourt(
   root.name = "court";
   const halfW = court.width / 2;
   const halfL = court.length / 2;
-  const wallH = court.wallHeight;
-  const glassH = court.glassHeight;
 
   // ── Turf and surround ──
   const turf = new THREE.Mesh(
@@ -130,10 +131,7 @@ export function buildCourt(
   const lineColor = new THREE.Color(PALETTE.lines).multiplyScalar(0.85);
   root.add(new THREE.Mesh(merged(lineParts), new THREE.MeshBasicMaterial({ color: lineColor })));
 
-  // ── Cage layout ──
-  // Back walls: glass full width to glassH. Side walls, from each back wall: 2 m
-  // of glass to glassH, then 2 m stepped down to 2 m high. Fence everywhere else.
-  const stepH = glassH - 1;
+  // ── Cage, from the shared regulation layout (the same panels the server collides with) ──
   const glassParts: THREE.BufferGeometry[] = [];
   const fenceParts: THREE.BufferGeometry[] = [];
   const steelParts: THREE.BufferGeometry[] = [];
@@ -146,51 +144,60 @@ export function buildCourt(
   }));
   const endOf = (z: number) => endParts[z < 0 ? 0 : 1]!;
   const inEnd = (z: number) => Math.abs(z) >= halfL - 2 - 1e-6;
+  /** The parts list a piece at `z` goes to: its end's (faded with it) or the shared one. */
+  const partsAt = (z: number, kind: "glass" | "fence" | "steel") =>
+    inEnd(z) ? endOf(z)[kind] : kind === "glass" ? glassParts : kind === "fence" ? fenceParts : steelParts;
   const railGeo = (len: number, x: number, ry: number, z: number, alongZ: boolean) =>
     placed(new THREE.BoxGeometry(len, RAIL, RAIL), x, ry, z, alongZ ? Math.PI / 2 : 0);
-  const rail = (len: number, x: number, ry: number, z: number, alongZ: boolean) =>
-    (inEnd(z) ? endOf(z).steel : steelParts).push(railGeo(len, x, ry, z, alongZ));
 
-  for (const z of [-halfL, halfL]) {
-    const e = endOf(z);
-    e.glass.push(placed(new THREE.PlaneGeometry(court.width, glassH), 0, glassH / 2, z));
-    e.fence.push(placed(cellPanel(court.width, wallH - glassH, FENCE_CELL), 0, (glassH + wallH) / 2, z));
-    rail(court.width, 0, glassH, z, false);
-  }
-  for (const x of [-halfW, halfW]) {
-    for (const s of [-1, 1]) {
-      const zTall = s * (halfL - 1);
-      const zStep = s * (halfL - 3);
-      endOf(zTall).glass.push(placed(new THREE.PlaneGeometry(2, glassH), x, glassH / 2, zTall, Math.PI / 2));
-      glassParts.push(placed(new THREE.PlaneGeometry(2, stepH), x, stepH / 2, zStep, Math.PI / 2));
-      endOf(zTall).fence.push(placed(cellPanel(2, wallH - glassH, FENCE_CELL), x, (glassH + wallH) / 2, zTall, Math.PI / 2));
-      fenceParts.push(placed(cellPanel(2, wallH - stepH, FENCE_CELL), x, (stepH + wallH) / 2, zStep, Math.PI / 2));
-      rail(2, x, glassH, zTall, true);
-      rail(2, x, stepH, zStep, true);
-    }
-    const midLen = court.length - 8;
-    fenceParts.push(placed(cellPanel(midLen, wallH, FENCE_CELL), x, wallH / 2, 0, Math.PI / 2));
+  for (const seg of CAGE) {
+    const h = seg.y1 - seg.y0;
+    const midY = (seg.y0 + seg.y1) / 2;
+    const back = seg.side === "back";
+    const len = back ? seg.x1 - seg.x0 : seg.z1 - seg.z0;
+    const x = back ? (seg.x0 + seg.x1) / 2 : sideX(seg.side);
+    const z = back ? seg.end * halfL : (seg.z0 + seg.z1) / 2;
+    const rotY = back ? 0 : Math.PI / 2;
+    const panel =
+      seg.material === "glass" ? new THREE.PlaneGeometry(len, h) : cellPanel(len, h, FENCE_CELL);
+    partsAt(z, seg.material === "glass" ? "glass" : "fence").push(placed(panel, x, midY, z, rotY));
+    // A rail along every panel's top: the glass/mesh seams and the stepped top of the cage.
+    partsAt(z, "steel").push(railGeo(len, x, seg.y1, z, !back));
   }
 
-  // Posts every 2 m around the perimeter (corners once), and the top rail.
-  const postAt = (x: number, z: number) =>
-    (inEnd(z) ? endOf(z).steel : steelParts).push(placed(new THREE.BoxGeometry(POST, wallH, POST), x, wallH / 2, z));
-  const nx = Math.round(court.width / 2);
-  const nz = Math.round(court.length / 2);
-  for (let i = 0; i <= nx; i++) {
-    const x = -halfW + (court.width / nx) * i;
+  // Posts every 2 m and at every panel boundary, each as tall as the cage there.
+  const postAt = (x: number, z: number) => {
+    const h = cageTopAt(x, z);
+    partsAt(z, "steel").push(placed(new THREE.BoxGeometry(POST, h, POST), x, h / 2, z));
+  };
+  const stops = (lo: number, hi: number, bounds: number[]) => {
+    const all = new Set<number>(bounds);
+    for (let v = lo; v <= hi + 1e-6; v += 2) all.add(Math.round(v * 1000) / 1000);
+    return [...all];
+  };
+  const backBounds = CAGE.flatMap((s) => (s.side === "back" ? [s.x0, s.x1] : []));
+  for (const x of stops(-halfW, halfW, backBounds)) {
     postAt(x, -halfL);
     postAt(x, halfL);
   }
-  for (let i = 1; i < nz; i++) {
-    const z = -halfL + (court.length / nz) * i;
-    postAt(-halfW, z);
-    postAt(halfW, z);
+  for (const side of ["left", "right"] as const) {
+    const bounds = CAGE.flatMap((s) => (s.side === side ? [s.z0, s.z1] : []));
+    // The corners already have their back-wall post.
+    for (const z of stops(-halfL, halfL, bounds)) if (Math.abs(z) < halfL - 1e-6) postAt(sideX(side), z);
   }
-  rail(court.width, 0, wallH, -halfL, false);
-  rail(court.width, 0, wallH, halfL, false);
-  rail(court.length, -halfW, wallH, 0, true); // (z=0: stays with the shared steel)
-  rail(court.length, halfW, wallH, 0, true);
+
+  // The access gates: a steel frame on the central mesh, with a latch bar at hand height.
+  for (const gate of CAGE_GATES) {
+    const gx = sideX(gate.side) - Math.sign(sideX(gate.side)) * 0.03; // just inside the mesh
+    const z0 = gate.z - gate.width / 2;
+    const z1 = gate.z + gate.width / 2;
+    for (const gz of [z0, z1]) {
+      steelParts.push(placed(new THREE.BoxGeometry(GATE_BAR, gate.height, GATE_BAR), gx, gate.height / 2, gz));
+    }
+    for (const gy of [GATE_BAR / 2, gate.height, 1.0]) {
+      steelParts.push(railGeo(gate.width, gx, gy, gate.z, true));
+    }
+  }
 
   // Net posts join the steel; the net itself joins the fence with finer cells.
   const netPostH = court.netHeight + 0.08;

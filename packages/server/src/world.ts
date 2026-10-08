@@ -1,21 +1,23 @@
 /**
- * Authoritative Rapier physics world: the enclosed padel court (floor, four
- * glass walls, centre net) plus the dynamic ball. Colliders are tagged by kind
- * and ball contacts are surfaced each step so the match engine can adjudicate
- * points (which surface the ball hit, in what order).
+ * Authoritative Rapier physics world: the enclosed padel court (floor, the
+ * regulation glass-and-mesh cage from `CAGE`, centre net) plus the dynamic
+ * ball. Colliders are tagged by kind (cage panels by material) and ball contacts
+ * are surfaced each step so the match engine can adjudicate points (which
+ * surface the ball hit, in what order).
  *
  * Players are NOT physics bodies — hits are resolved by proximity in the match
  * engine, so the ball never gets pushed around incidentally.
  */
 import RAPIER from "@dimforge/rapier3d-compat";
-import { BALL, COURT, GRAVITY, SERVE, TICK_DT, type Vec3 } from "@padel/shared";
+import { BALL, CAGE, COURT, GLASS, GRAVITY, MESH, SERVE, TICK_DT, sideX, type Vec3 } from "@padel/shared";
 
 export interface BallState {
   pos: Vec3;
   vel: Vec3;
 }
 
-export type ContactKind = "floor" | "wall" | "net";
+/** What the ball touched: the floor, the net, or a cage panel by its material. */
+export type ContactKind = "floor" | "glass" | "mesh" | "net";
 
 export interface Contact {
   kind: ContactKind;
@@ -39,7 +41,6 @@ export class PhysicsWorld {
 
     const halfW = COURT.width / 2;
     const halfL = COURT.length / 2;
-    const wallH = COURT.wallHeight;
     const t = 0.1;
     const kinds = new Map<number, ContactKind>();
 
@@ -60,27 +61,22 @@ export class PhysicsWorld {
       "floor",
     );
 
-    const wallRest = 0.85;
-    add(
-      RAPIER.ColliderDesc.cuboid(halfW, wallH / 2, t).setRestitution(wallRest),
-      fixed(0, wallH / 2, -halfL),
-      "wall",
-    );
-    add(
-      RAPIER.ColliderDesc.cuboid(halfW, wallH / 2, t).setRestitution(wallRest),
-      fixed(0, wallH / 2, halfL),
-      "wall",
-    );
-    add(
-      RAPIER.ColliderDesc.cuboid(t, wallH / 2, halfL).setRestitution(wallRest),
-      fixed(-halfW, wallH / 2, 0),
-      "wall",
-    );
-    add(
-      RAPIER.ColliderDesc.cuboid(t, wallH / 2, halfL).setRestitution(wallRest),
-      fixed(halfW, wallH / 2, 0),
-      "wall",
-    );
+    // The cage: one slab per panel, centred on the wall's plane, open above the panels.
+    for (const seg of CAGE) {
+      const halfH = (seg.y1 - seg.y0) / 2;
+      const midY = (seg.y0 + seg.y1) / 2;
+      const surface = seg.material === "glass" ? GLASS : MESH;
+      const desc =
+        seg.side === "back"
+          ? RAPIER.ColliderDesc.cuboid((seg.x1 - seg.x0) / 2, halfH, t)
+          : RAPIER.ColliderDesc.cuboid(t, halfH, (seg.z1 - seg.z0) / 2);
+      desc.setRestitution(surface.restitution).setFriction(surface.friction);
+      const body =
+        seg.side === "back"
+          ? fixed((seg.x0 + seg.x1) / 2, midY, seg.end * halfL)
+          : fixed(sideX(seg.side), midY, (seg.z0 + seg.z1) / 2);
+      add(desc, body, seg.material);
+    }
 
     add(
       RAPIER.ColliderDesc.cuboid(halfW, COURT.netHeight / 2, 0.03).setRestitution(

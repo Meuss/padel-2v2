@@ -10,7 +10,7 @@
  *   The net sits on the plane z = 0. Team A defends z < 0, Team B defends z > 0.
  */
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /** Gravity (m/s²), shared by the physics world and the kinematic toss/serve maths. */
 export const GRAVITY = 9.81;
@@ -19,9 +19,9 @@ export const GRAVITY = 9.81;
 export const COURT = {
   length: 20, // along z
   width: 10, // along x
-  wallHeight: 4, // glass + mesh fence
+  wallHeight: 4, // the tallest part of the cage (CAGE_HEIGHT.top in court.ts)
   netHeight: 0.88,
-  glassHeight: 3, // solid glass portion of the back/side walls
+  glassHeight: 3, // the back-wall glass (CAGE_HEIGHT.glass); the side glass steps down to 2 m
 } as const;
 
 /** Simulation runs at a fixed timestep; snapshots are sent less often. */
@@ -39,6 +39,13 @@ export const MAX_PLAYERS = 4;
 
 /** Longest nickname, in Unicode code points. Matches the client's input maxlength. */
 export const NAME_MAX_LENGTH = 16;
+
+/**
+ * How the cage's two materials return the ball (see `court.ts` for where each is). Rapier
+ * averages these with the ball's own values. The mesh gives and grips: a lower, slower rebound.
+ */
+export const GLASS = { restitution: 0.85, friction: 0.5 } as const;
+export const MESH = { restitution: 0.45, friction: 0.6 } as const;
 
 export const BALL = {
   radius: 0.07,

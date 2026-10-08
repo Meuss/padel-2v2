@@ -76,10 +76,9 @@ function isValidInput(input: InputMsg): boolean {
   );
 }
 
-/** What a snapshot reports for a contact: the walls are glass up to COURT.glassHeight, mesh above. */
+/** What a snapshot reports for a contact: a cage panel by its material (the mesh is the fence). */
 function contactSurface(c: Contact): ContactSurface {
-  if (c.kind !== "wall") return c.kind;
-  return c.pos.y <= COURT.glassHeight ? "glass" : "fence";
+  return c.kind === "mesh" ? "fence" : c.kind;
 }
 
 /** Funny bot names — famous folks + Swiss / Lausanne flavour. */

@@ -19,6 +19,7 @@ import {
   SERVE,
   SERVICE_LINE_DIST,
   TOSS,
+  leftCage,
   serveTarget,
   serveTiming,
   tossOffset,
@@ -57,6 +58,9 @@ const TEAM_CALL: Record<Team, string> = { A: "AZUL", B: "ROJO" };
 const other = (t: Team): Team => (t === "A" ? "B" : "A");
 const sign = (z: number): -1 | 1 => (z < 0 ? -1 : 1);
 const out = (ball: Vec3): FaultHighlight => ({ kind: "out", pos: { ...ball } });
+/** A cage panel's name in broadcast copy. */
+const WALL_CALL = { glass: "GLASS", mesh: "FENCE" } as const;
+const isWall = (kind: ContactKind): kind is "glass" | "mesh" => kind === "glass" || kind === "mesh";
 
 export class MatchEngine {
   phase: MatchPhase = "warmup";
@@ -358,9 +362,9 @@ export class MatchEngine {
     for (const kind of contacts) {
       if (kind === "net") {
         this.serveNetTouched = true;
-      } else if (kind === "wall") {
+      } else if (isWall(kind)) {
         // Touched a wall before bouncing in the box — fault.
-        return this.serveFault(now, "SERVE HIT THE GLASS FIRST", out(ball));
+        return this.serveFault(now, `SERVE HIT THE ${WALL_CALL[kind]} FIRST`, out(ball));
       } else if (kind === "floor") {
         const inBox =
           sign(ball.z) === this.targetSide &&
@@ -383,7 +387,7 @@ export class MatchEngine {
       }
     }
     // Left the cage before bouncing — fault.
-    if (Math.abs(ball.x) > HALF_W + 0.3 || Math.abs(ball.z) > HALF_L + 0.3) {
+    if (leftCage(ball)) {
       return this.serveFault(now, "SERVE LONG", out(ball));
     }
     return { hold: null };
@@ -460,19 +464,19 @@ export class MatchEngine {
             pos: { ...ball },
           });
         }
-      } else if (kind === "wall") {
+      } else if (isWall(kind)) {
         if (s === target && this.crossed && !this.bouncedTarget) {
           return this.endPoint(
             now,
             other(this.hitterTeam!),
-            "HIT THE GLASS ON THE FULL",
+            `HIT THE ${WALL_CALL[kind]} ON THE FULL`,
             { kind: "wall", pos: { ...ball } },
           );
         }
       }
     }
 
-    if (Math.abs(ball.x) > HALF_W + 0.3 || Math.abs(ball.z) > HALF_L + 0.3) {
+    if (leftCage(ball)) {
       return this.bouncedTarget
         ? this.endPoint(now, this.hitterTeam!, "OUT OFF THE BOUNCE", {
             kind: "out",
