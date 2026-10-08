@@ -337,6 +337,8 @@ export class Room {
     this.slots.set(seat, ps);
     this.syncMatchRoster();
     this.broadcastRoster();
+    // A human sitting into a finished match with no vote open gets the Rematch vote (bots-only ends open none).
+    if (!isBot && this.match.phase === "over" && !this.vote) this.openRematchVote();
     return ps;
   }
 
@@ -452,6 +454,10 @@ export class Room {
         this.slots.delete(slot);
         freed = true;
       }
+    }
+    // The last human left: the bots go too (no CPU spent on an empty court, no stale bots-only Final).
+    if (freed && this.humanPlayerIds().length === 0) {
+      for (const [slot, ps] of [...this.slots]) if (ps.isBot) this.slots.delete(slot);
     }
     if (freed) this.syncMatchRoster();
     // Always rebroadcast: removing a spectator changes the count without

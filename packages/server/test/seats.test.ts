@@ -196,3 +196,50 @@ describe("a deferred take seat", () => {
     room.stop();
   }, 30_000);
 });
+
+describe("empty room hygiene", () => {
+  it("when the last human seat empties, every bot leaves too", async () => {
+    const room = await Room.create({ seed: SEED });
+    const p = fakeClient("p");
+    room.addClient(p.client);
+    room.claimSlot("p", "p");
+    const w = fakeClient("w");
+    room.addClient(w.client);
+    room.debugAddBots(3);
+    room.step();
+    expect(w.last("match")!.phase).toBe("serve");
+    room.removeClient("p");
+    room.step();
+    expect(w.last("roster")!.players).toEqual([]);
+    expect(w.last("match")!.phase).toBe("warmup");
+    room.stop();
+  });
+
+  it("a bots-only room keeps its bots", async () => {
+    const room = await Room.create({ seed: SEED });
+    const w = fakeClient("w");
+    room.addClient(w.client);
+    room.debugAddBots(4);
+    room.removeClient("w");
+    const v = fakeClient("v");
+    room.addClient(v.client);
+    expect(v.last("roster")!.players).toHaveLength(4);
+    room.stop();
+  });
+
+  it("a human sitting into a finished match with no vote open opens the rematch vote", async () => {
+    const room = await Room.create({ seed: SEED });
+    room.debugAddBots(4);
+    room.step();
+    room.debugEndMatch("A");
+    room.step();
+    const s = fakeClient("s");
+    room.addClient(s.client);
+    room.claimSlot("s", "s");
+    expect(s.last("vote")?.active ?? false).toBe(false);
+    expect(room.takeSeat("s")).toBe(true);
+    expect(s.last("match")!.phase).toBe("over");
+    expect(s.last("vote")).toMatchObject({ active: true, kind: "rematch", needed: 1 });
+    room.stop();
+  });
+});

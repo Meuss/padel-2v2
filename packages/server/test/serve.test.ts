@@ -255,17 +255,12 @@ describe("aimed serve with a toss", () => {
 
   it("a Bot server never faults across 5 points", async () => {
     const room = await Room.create({ seed: SEED });
-    const host = fakeClient("p1");
     const watcher = fakeClient("w1");
-    room.addClient(host.client);
-    room.claimSlot("p1", "Ana"); // A1
-    room.addBot("p1"); // B1
-    room.addBot("p1"); // A2
     room.addClient(watcher.client);
-    room.removeClient("p1"); // only bots left: A2 serves first
+    room.debugAddBots(3); // A1, B1, A2: a bot serves first
     room.step();
     const match = () => watcher.last("match")!;
-    expect(match().serverSlot).toBe("A2");
+    expect(match().serverSlot).toBe("A1");
 
     let points = 0;
     let wasBetween = false;
