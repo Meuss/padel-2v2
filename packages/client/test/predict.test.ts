@@ -88,4 +88,15 @@ describe("Predictor", () => {
     p.reconcile({ x: 2, z: -3 }, 7, -1, false);
     expect(p.renderPosition(0)).toEqual({ x: 2, z: -3 });
   });
+
+  it("draws without allocating: every frame returns the same point, updated in place", () => {
+    const p = new Predictor();
+    p.reconcile({ x: 0, z: -5 }, 0, -1, false);
+    p.reconcile({ x: 0.3, z: -5 }, 0, -1, false); // a small correction: an offset to decay
+    const first = p.renderPosition(0.016)!;
+    const x1 = first.x;
+    const second = p.renderPosition(0.016)!;
+    expect(second).toBe(first);
+    expect(second.x).toBeGreaterThan(x1); // the offset decayed toward the server's 0.3
+  });
 });

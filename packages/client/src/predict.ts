@@ -42,6 +42,8 @@ export class Predictor {
   private pos: Vec2 | null = null;
   private pending: PredictedInput[] = [];
   private offset: Vec2 = { x: 0, z: 0 };
+  /** The point renderPosition returns, reused every frame (no per-frame allocation). */
+  private drawn: Vec2 = { x: 0, z: 0 };
 
   /** Apply one tick of local input now and keep it for replay. */
   applyInput(input: PredictedInput, side: -1 | 1, locked: boolean): void {
@@ -70,12 +72,18 @@ export class Predictor {
     }
   }
 
-  /** Where to draw the player this frame; the correction offset decays. */
+  /**
+   * Where to draw the player this frame; the correction offset decays. Allocates nothing: the
+   * point returned is the same object every frame, valid until the next call.
+   */
   renderPosition(dtSec: number): Vec2 | null {
     if (!this.pos) return null;
     const k = Math.exp(-dtSec * CORRECTION_RATE);
-    this.offset = { x: this.offset.x * k, z: this.offset.z * k };
-    return { x: this.pos.x + this.offset.x, z: this.pos.z + this.offset.z };
+    this.offset.x *= k;
+    this.offset.z *= k;
+    this.drawn.x = this.pos.x + this.offset.x;
+    this.drawn.z = this.pos.z + this.offset.z;
+    return this.drawn;
   }
 
   /** Forget everything (new connection or seat). */
