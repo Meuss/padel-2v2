@@ -917,7 +917,6 @@ scene.start((dt) => {
     if (pose) {
       scene.setBall(pose.ball.x, pose.ball.y, pose.ball.z);
       scene.setBallTarget(pose.ball.x, pose.ball.z);
-      scene.setBallSide(pose.ball.z);
       for (let k = 0; k < pose.count; k++) {
         const p = pose.players[k]!;
         scene.setPlayer(p.slot, p.pos.x, p.pos.y, p.pos.z, p.yaw);
@@ -927,7 +926,6 @@ scene.start((dt) => {
   } else if (s) {
     scene.setBall(s.ball.x, s.ball.y, s.ball.z);
     scene.setBallTarget(s.ball.x, s.ball.z);
-    scene.setBallSide(s.ball.z);
     present.clear();
     const predicted = predictor.renderPosition(dt);
     for (const p of s.players) {

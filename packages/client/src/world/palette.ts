@@ -14,7 +14,6 @@ export const PALETTE = {
   ledText: "#ffffff",
   azul: "#62b0ff",
   rojo: "#d8383a",
-  joints: "#1a1d26",
   ball: "#e4f23a",
   /** Timing arc and label: perfect is green; early and late share amber (the label tells them apart). */
   timingPerfect: "#7bd13a",

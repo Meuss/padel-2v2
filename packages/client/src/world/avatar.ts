@@ -1,10 +1,11 @@
 /**
- * Player avatars: the CC0 mannequin (`public/models/player.glb`) in Azul/Rojo
- * kits, holding a padel racket, with a nickname on the shirt back and an
- * animation mixer driven by ground speed, swings and celebrations.
+ * Player avatars: realistic tennis players (`public/models/player.glb`, built by
+ * `scripts/build-player-model.mjs`) in Azul/Rojo kits, each seat with its own face,
+ * holding a padel racket, with a nickname on the shirt back and an animation mixer
+ * driven by ground speed, motion-captured strokes and celebrations.
  *
  * The model loads asynchronously. Until it arrives (or if it never does), each
- * avatar shows the procedural V1 player, then swaps in the mannequin in place.
+ * avatar shows the procedural V1 player, then swaps in the model in place.
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -12,7 +13,7 @@ import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { PLAYER, type Slot, type Team } from "@padel/shared";
 import { PALETTE } from "./palette.js";
 
-export type Locomotion = "idle" | "ready" | "jog" | "sprint";
+export type Locomotion = "idle" | "jog" | "sprint";
 
 /** Ground speed (m/s) where standing turns into a jog. */
 const JOG_SPEED = 0.35;
@@ -22,17 +23,17 @@ const SPRINT_SPEED = 4.2;
 const LOCO_HYSTERESIS = 0.1;
 
 /**
- * Pick the locomotion clip from ground speed (m/s), whether the ball is on our side,
- * and the clip playing now (hysteresis: ±0.1 m/s around each threshold). Pure.
+ * Pick the locomotion clip from ground speed (m/s) and the clip playing now (hysteresis:
+ * ±0.1 m/s around each threshold). Standing is always upright: there is no crouched stance. Pure.
  */
-export function pickLocomotion(speed: number, ballOnOurSide: boolean, prev: Locomotion): Locomotion {
+export function pickLocomotion(speed: number, prev: Locomotion): Locomotion {
   // Each threshold sits 0.1 m/s lower when we are already above it, higher when below.
   const moving = prev === "jog" || prev === "sprint";
   const sprintAt = prev === "sprint" ? SPRINT_SPEED - LOCO_HYSTERESIS : SPRINT_SPEED + LOCO_HYSTERESIS;
   const jogAt = moving ? JOG_SPEED - LOCO_HYSTERESIS : JOG_SPEED + LOCO_HYSTERESIS;
   if (speed >= sprintAt) return "sprint";
   if (speed >= jogAt) return "jog";
-  return ballOnOurSide ? "ready" : "idle";
+  return "idle";
 }
 
 /** Nickname as printed on the shirt: uppercase, at most 10 characters including the ellipsis. Pure. */
@@ -47,7 +48,7 @@ export interface ModelSource {
 
 let glbPromise: Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }> | null = null;
 
-/** The shipped mannequin, fetched once per page (a failed fetch is retried on the next call). */
+/** The shipped player model, fetched once per page (a failed fetch is retried on the next call). */
 export const glbModelSource: ModelSource = {
   load() {
     glbPromise ??= new GLTFLoader()
@@ -64,17 +65,17 @@ export const glbModelSource: ModelSource = {
 const KIT: Record<Team, string> = { A: PALETTE.azul, B: PALETTE.rojo };
 const LOCO_CLIP: Record<Locomotion, string> = {
   idle: "Idle_Loop",
-  ready: "Crouch_Idle_Loop",
   jog: "Jog_Fwd_Loop",
   sprint: "Sprint_Loop",
 };
-const SWING_CLIP = { drive: "Sword_Attack", smash: "Punch_Cross" } as const;
+/** Tennis strokes from motion capture; each starts just before ball contact. */
+const SWING_CLIP = { drive: "Drive", smash: "Smash" } as const;
 const DANCE_CLIP = "Dance_Loop";
 
 const CROSSFADE_S = 0.18;
 /** A jump further than this (m) between two poses is a teleport (ends swap, reconnect), not a run. */
 const TELEPORT_M = 2;
-const SWING_S = 0.42;
+const SWING_S = 0.5;
 const SWING_FADE_IN_S = 0.05;
 const SWING_FADE_OUT_S = 0.12;
 /** The swing layer outweighs locomotion on the upper body (≈85 %) while the legs keep running. */
@@ -421,7 +422,6 @@ export class Avatar {
   private lastX = 0;
   private lastZ = 0;
   private speed = 0;
-  private ballOnOurSide = false;
   private loco: Locomotion = "idle";
   /**
    * The full-body base layer (locomotion clips and the dance): exactly one target fades
@@ -462,10 +462,6 @@ export class Avatar {
     this.root.rotation.y = yaw;
   }
 
-  setBallSide(ballOnOurSide: boolean): void {
-    this.ballOnOurSide = ballOnOurSide;
-  }
-
   swing(kind: "drive" | "smash"): void {
     if (this.fallback) {
       this.fallback.swing();
@@ -490,7 +486,7 @@ export class Avatar {
     this.startDance();
   }
 
-  /** Fade into the dance (mannequin) or hop (fallback); `celebrateLeft` says when to stop. */
+  /** Fade into the dance (model) or hop (fallback); `celebrateLeft` says when to stop. */
   private startDance(): void {
     if (this.fallback) {
       this.fallback.celebrate();
@@ -504,7 +500,7 @@ export class Avatar {
 
   /**
    * World height (m) of the top of the head as posed last frame: the head bone plus the skull,
-   * so a crouched ready stance reads lower than PLAYER.height. Falls back to PLAYER.height.
+   * so a stroke or a run that dips the head reads lower than PLAYER.height. Falls back to PLAYER.height.
    */
   headTopY(): number {
     if (!this.headBone) return this.root.position.y + PLAYER.height;
@@ -528,7 +524,7 @@ export class Avatar {
     if (wasCelebrating && this.celebrateLeft === 0) this.danceAction = null;
     if (!this.danceAction) {
       // Pick the clip first, then fade it in: the dance hands over straight to it.
-      this.loco = pickLocomotion(this.speed, this.ballOnOurSide, this.loco);
+      this.loco = pickLocomotion(this.speed, this.loco);
       const loco = this.action(LOCO_CLIP[this.loco]);
       this.setBase(loco);
       if (loco && this.loco === "jog") loco.timeScale = THREE.MathUtils.clamp(this.speed / 3.2, 0.8, 1.4);
@@ -572,25 +568,19 @@ export class Avatar {
     }
   }
 
-  /** Swap the fallback for a clone of the loaded mannequin. Called by the factory. */
+  /** Swap the fallback for a clone of the loaded model. Called by the factory. */
   upgrade(model: PreparedModel): void {
     if (this.disposed || this.body) return;
     const body = SkeletonUtils.clone(model.scene);
     body.scale.setScalar(model.scale);
+    const skinTint = keepHead(body, this.slot);
 
     const cloned = new Map<THREE.Material, THREE.Material>();
     const kit = (m: THREE.Material): THREE.Material => {
       let c = cloned.get(m);
       if (!c) {
         c = m.clone();
-        if (c instanceof THREE.MeshStandardMaterial) {
-          if (m.name === "M_Main") {
-            c.color.set(KIT[this.team]);
-            c.roughness = 0.6;
-          } else if (m.name === "M_Joints") {
-            c.color.set(PALETTE.joints);
-          }
-        }
+        if (c instanceof THREE.MeshStandardMaterial && m.name === "M_Body") tintKit(c, this.team, skinTint);
         cloned.set(m, c);
         this.kitMaterials.push(c);
       }
@@ -619,7 +609,7 @@ export class Avatar {
     this.clips = model.clips;
     this.mixer = new THREE.AnimationMixer(body);
     this.root.add(body);
-    this.loco = pickLocomotion(this.speed, this.ballOnOurSide, this.loco);
+    this.loco = pickLocomotion(this.speed, this.loco);
     this.setBase(this.action(LOCO_CLIP[this.loco]));
     if (this.celebrateLeft > 0) this.startDance(); // finish a celebration begun on the fallback
   }
@@ -662,6 +652,75 @@ export class Avatar {
     }
     this.baseTarget?.setEffectiveWeight(Math.min(1, Math.max(0, 1 - others)));
   }
+}
+
+const HSV_GLSL = /* glsl */ `
+vec3 kitRgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+vec3 kitHsv2rgb(vec3 c) {
+  vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+  return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}`;
+
+/** Which of the model's heads (`Head_0`…) each seat wears, so the four players differ. */
+const HEAD_FOR_SLOT: Record<Slot, number> = { A1: 0, A2: 1, B1: 2, B2: 3 };
+
+/**
+ * Keep the seat's head and drop the others. Returns the head's skin tint for the body
+ * (`extras.skinTint`, linear RGB; white when the model has none).
+ */
+function keepHead(body: THREE.Object3D, slot: Slot): THREE.Color {
+  const heads: THREE.Object3D[] = [];
+  body.traverse((o) => {
+    // A head with hair is a group of two meshes; take the outermost object with the name.
+    if (/^Head_\d+$/.test(o.name) && !heads.includes(o.parent!)) heads.push(o);
+  });
+  heads.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  const keep = heads.length ? heads[HEAD_FOR_SLOT[slot] % heads.length] : undefined;
+  for (const h of heads) if (h !== keep) h.removeFromParent();
+  const t: unknown = keep?.userData.skinTint;
+  return Array.isArray(t) && t.length === 3 ? new THREE.Color(t[0], t[1], t[2]) : new THREE.Color(1, 1, 1);
+}
+
+/** Per team: the shirt's hue (0–1) and a brightness lift, applied in linear colour. */
+const KIT_TINT: Record<Team, { hue: number; lift: number }> = {
+  A: { hue: new THREE.Color(PALETTE.azul).getHSL({ h: 0, s: 0, l: 0 }).h, lift: 1.25 },
+  B: { hue: new THREE.Color(PALETTE.rojo).getHSL({ h: 0, s: 0, l: 0 }).h, lift: 1.6 },
+};
+
+/**
+ * Recolour the shirt in the team's hue and the skin to match the head. The shirt holds
+ * the body texture's only blue pixels, so white shorts and shoes keep their colours.
+ */
+function tintKit(m: THREE.MeshStandardMaterial, team: Team, skinTint: THREE.Color): void {
+  const { hue, lift } = KIT_TINT[team];
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.skinTint = { value: skinTint };
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>\nuniform vec3 skinTint;\n${HSV_GLSL}`)
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+        {
+          vec3 hsv = kitRgb2hsv(diffuseColor.rgb);
+          // Saturated blue (hue ≈ 0.63, navy panel included); skin, white and the shoes' red are not.
+          float shirt = (1.0 - smoothstep(0.05, 0.1, abs(hsv.x - 0.63))) * smoothstep(0.3, 0.5, hsv.y);
+          hsv.x = ${hue.toFixed(4)};
+          hsv.z = min(1.0, hsv.z * ${lift.toFixed(2)});
+          // Skin: orange hues at moderate saturation (the shoes' red is more saturated).
+          vec3 src = kitRgb2hsv(diffuseColor.rgb);
+          float skin = (1.0 - smoothstep(0.1, 0.14, src.x)) * smoothstep(0.12, 0.22, src.y) * (1.0 - smoothstep(0.8, 0.9, src.y));
+          diffuseColor.rgb = mix(diffuseColor.rgb, kitHsv2rgb(hsv), shirt);
+          diffuseColor.rgb *= mix(vec3(1.0), skinTint, skin * (1.0 - shirt));
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => `kit-${team}`;
 }
 
 function makeRacketInHand(team: Team): THREE.Group {

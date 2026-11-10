@@ -218,11 +218,6 @@ export class PadelScene {
     for (const [slot, a] of this.players) if (slot.startsWith(team)) a.celebrate();
   }
 
-  /** Tell each avatar whether the ball is in the half it stands in (ready vs idle stance). */
-  setBallSide(ballZ: number): void {
-    for (const a of this.players.values()) a.setBallSide(Math.sign(ballZ) === Math.sign(a.root.position.z));
-  }
-
   /** Render counters from the last frame (used by the shoot tool and quality checks). */
   stats(): { quality: Quality; calls: number; triangles: number; geometries: number; textures: number } {
     const i = this.renderer.info;

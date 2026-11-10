@@ -45,7 +45,9 @@ run `pnpm typecheck && pnpm test && pnpm build` (the same gate as CI).
     (English broadcast copy), `glyphs`, `button`, `hud.css` (tokens).
   - `replay/`: Instant replay: `recorder`, `director` (pure), `player`, `controller`.
   - `audio/`: synthesized Web Audio (`engine`, `voices`); no sound files.
-  - `public/models/` holds the CC0 player model, with its `SOURCE.md`.
+  - `public/models/player.glb`: Rocketbox players on the Quaternius animation rig, with
+    Tennis-MoCap strokes; one body, one `Head_<n>` per seat. Rebuilt by
+    `scripts/build-player-model.mjs`; `public/models/SOURCE.md` has the sources, licences and command.
 
 ## Conventions
 

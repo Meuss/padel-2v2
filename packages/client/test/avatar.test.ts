@@ -1,22 +1,20 @@
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AvatarFactory, pickLocomotion, shirtName, type Locomotion, type ModelSource } from "../src/world/avatar.js";
-import { PALETTE } from "../src/world/palette.js";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const CLIPS = [
   "Idle_Loop",
-  "Crouch_Idle_Loop",
   "Jog_Fwd_Loop",
   "Sprint_Loop",
-  "Sword_Attack",
-  "Punch_Cross",
+  "Drive",
+  "Smash",
   "Dance_Loop",
   "Jump_Start",
 ];
 
-/** A tiny skinned rig shaped like the real export: bones, two materials, one clip per name. */
+/** A tiny skinned rig shaped like the real export: a body, four heads, one clip per name. */
 function syntheticModel(): { scene: THREE.Object3D; animations: THREE.AnimationClip[]; main: THREE.Material } {
   const hips = new THREE.Bone();
   hips.name = "DEF-hips";
@@ -29,21 +27,29 @@ function syntheticModel(): { scene: THREE.Object3D; animations: THREE.AnimationC
   hips.add(spine);
   spine.add(hand);
 
-  const geo = new THREE.BoxGeometry(0.4, 1.8, 0.3, 1, 2, 1);
-  geo.translate(0, 0.9, 0);
-  const n = geo.attributes.position!.count;
-  geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(new Array(n * 4).fill(0), 4));
-  geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(new Array(n * 4).fill(0).map((_, i) => (i % 4 === 0 ? 1 : 0)), 4));
-  geo.addGroup(0, geo.index!.count / 2, 0);
-  geo.addGroup(geo.index!.count / 2, geo.index!.count / 2, 1);
-  const main = new THREE.MeshStandardMaterial({ name: "M_Main" });
-  const joints = new THREE.MeshStandardMaterial({ name: "M_Joints" });
-  const mesh = new THREE.SkinnedMesh(geo, [main, joints]);
-  mesh.name = "Mannequin";
+  const skinnedBox = (h: number, y: number): THREE.BufferGeometry => {
+    const geo = new THREE.BoxGeometry(0.4, h, 0.3);
+    geo.translate(0, y, 0);
+    const n = geo.attributes.position!.count;
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(new Array(n * 4).fill(0), 4));
+    geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(new Array(n * 4).fill(0).map((_, i) => (i % 4 === 0 ? 1 : 0)), 4));
+    return geo;
+  };
+  const skeleton = new THREE.Skeleton([hips, spine, hand]);
+  const main = new THREE.MeshStandardMaterial({ name: "M_Body" });
+  const body = new THREE.SkinnedMesh(skinnedBox(1.55, 0.775), main);
+  body.name = "Body";
+  body.bind(skeleton);
   const rig = new THREE.Group();
   rig.name = "Rig";
-  rig.add(hips, mesh);
-  mesh.bind(new THREE.Skeleton([hips, spine, hand]));
+  rig.add(hips, body);
+  for (let i = 0; i < 4; i++) {
+    const head = new THREE.SkinnedMesh(skinnedBox(0.25, 1.675), new THREE.MeshStandardMaterial({ name: `M_Head_${i}` }));
+    head.name = `Head_${i}`;
+    head.userData.skinTint = [1, 1 - i * 0.2, 1 - i * 0.2];
+    head.bind(skeleton);
+    rig.add(head);
+  }
 
   const animations = CLIPS.map(
     (name) =>
@@ -55,35 +61,32 @@ function syntheticModel(): { scene: THREE.Object3D; animations: THREE.AnimationC
 }
 
 describe("pickLocomotion", () => {
-  it("stands still below 0.35 m/s, ready when the ball is on our side", () => {
-    expect(pickLocomotion(0, false, "idle")).toBe("idle");
-    expect(pickLocomotion(0.34, false, "idle")).toBe("idle");
-    expect(pickLocomotion(0.2, true, "idle")).toBe("ready");
-    expect(pickLocomotion(0.2, false, "ready")).toBe("idle");
+  it("stands still (upright, never crouched) below 0.35 m/s", () => {
+    expect(pickLocomotion(0, "idle")).toBe("idle");
+    expect(pickLocomotion(0.34, "idle")).toBe("idle");
   });
 
   it("jogs up to 4.2 m/s, then sprints", () => {
-    expect(pickLocomotion(0.45, false, "idle")).toBe("jog");
-    expect(pickLocomotion(4.19, true, "jog")).toBe("jog");
-    expect(pickLocomotion(4.3, false, "jog")).toBe("sprint");
-    expect(pickLocomotion(7, true, "idle")).toBe("sprint");
+    expect(pickLocomotion(0.45, "idle")).toBe("jog");
+    expect(pickLocomotion(4.19, "jog")).toBe("jog");
+    expect(pickLocomotion(4.3, "jog")).toBe("sprint");
+    expect(pickLocomotion(7, "idle")).toBe("sprint");
   });
 
   it("holds the current clip within 0.1 m/s of a threshold", () => {
-    expect(pickLocomotion(0.4, false, "idle")).toBe("idle");
-    expect(pickLocomotion(0.3, false, "jog")).toBe("jog");
-    expect(pickLocomotion(0.24, false, "jog")).toBe("idle");
-    expect(pickLocomotion(0.3, true, "ready")).toBe("ready");
-    expect(pickLocomotion(4.25, false, "jog")).toBe("jog");
-    expect(pickLocomotion(4.15, false, "sprint")).toBe("sprint");
-    expect(pickLocomotion(4.05, false, "sprint")).toBe("jog");
+    expect(pickLocomotion(0.4, "idle")).toBe("idle");
+    expect(pickLocomotion(0.3, "jog")).toBe("jog");
+    expect(pickLocomotion(0.24, "jog")).toBe("idle");
+    expect(pickLocomotion(4.25, "jog")).toBe("jog");
+    expect(pickLocomotion(4.15, "sprint")).toBe("sprint");
+    expect(pickLocomotion(4.05, "sprint")).toBe("jog");
   });
 
   it("does not flip on every sample when the speed oscillates 0.30 ↔ 0.40", () => {
     let loco: Locomotion = "idle";
     let flips = 0;
     for (let i = 0; i < 20; i++) {
-      const next = pickLocomotion(i % 2 === 0 ? 0.3 : 0.4, false, loco);
+      const next = pickLocomotion(i % 2 === 0 ? 0.3 : 0.4, loco);
       if (next !== loco) flips++;
       loco = next;
     }
@@ -149,7 +152,6 @@ describe("AvatarFactory", () => {
     parent.add(avatar.root);
     expect(() => {
       avatar.setPose(1, 0, -3, 0.5, 1 / 60);
-      avatar.setBallSide(true);
       avatar.swing("drive");
       avatar.celebrate();
       avatar.setName("Ana");
@@ -172,14 +174,19 @@ describe("AvatarFactory", () => {
     avatar.root.traverse((o) => {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(o as THREE.SkinnedMesh);
     });
-    expect(skinned).toHaveLength(1);
+    // The body plus the one head this seat wears (B2 → Head_3).
+    expect(skinned.map((m) => m.name)).toEqual(["Body", "Head_3"]);
     expect(skinned[0]).not.toBe(model.scene.children[1]);
-    const mats = skinned[0]!.material as THREE.MeshStandardMaterial[];
-    const main = mats.find((m) => m.name === "M_Main")!;
-    expect(main).toBeDefined();
-    expect(main).not.toBe(model.main);
-    expect(main.color.getHexString()).toBe(PALETTE.rojo.slice(1));
-    expect(mats.find((m) => m.name === "M_Joints")!.color.getHexString()).toBe(PALETTE.joints.slice(1));
+    const kit = skinned[0]!.material as THREE.MeshStandardMaterial;
+    expect(kit.name).toBe("M_Body");
+    expect(kit).not.toBe(model.main);
+    expect(kit.customProgramCacheKey()).toBe("kit-B");
+    // The kit shader gets this head's skin tint.
+    const shader = { uniforms: {}, fragmentShader: "#include <common>\n#include <map_fragment>", vertexShader: "" };
+    kit.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
+    const tint = (shader.uniforms as { skinTint: { value: THREE.Color } }).skinTint.value;
+    expect([tint.r, tint.g, tint.b].map((c) => +c.toFixed(3))).toEqual([1, 0.4, 0.4]);
+    expect(shader.fragmentShader).toContain("kitHsv2rgb");
 
     expect(() => {
       avatar.setPose(0, 0, 4, Math.PI, 1 / 60);
@@ -221,6 +228,9 @@ describe("AvatarFactory", () => {
 });
 
 /** Skinned meshes under an avatar root: one once the mannequin is in, none on the fallback. */
+/** A loaded avatar is two skinned meshes: the body and its seat's head. */
+const LOADED = 2;
+
 function skinnedOf(root: THREE.Object3D): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   root.traverse((o) => {
@@ -247,8 +257,8 @@ describe("AvatarFactory recovery", () => {
     const b = factory.create("B1", "B"); // retries the load, which succeeds
     await flush();
     expect(loads).toBe(2);
-    expect(skinnedOf(a.root)).toHaveLength(1);
-    expect(skinnedOf(b.root)).toHaveLength(1);
+    expect(skinnedOf(a.root)).toHaveLength(LOADED);
+    expect(skinnedOf(b.root)).toHaveLength(LOADED);
   });
 
   it("retries a failed load once after 5 s, without a new avatar, and upgrades all waiting avatars", async () => {
@@ -266,8 +276,8 @@ describe("AvatarFactory recovery", () => {
     expect(skinnedOf(a.root)).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(200);
     expect(loads).toBe(2);
-    expect(skinnedOf(a.root)).toHaveLength(1);
-    expect(skinnedOf(b.root)).toHaveLength(1);
+    expect(skinnedOf(a.root)).toHaveLength(LOADED);
+    expect(skinnedOf(b.root)).toHaveLength(LOADED);
   });
 
   it("retries automatically only once", async () => {
@@ -299,7 +309,7 @@ describe("AvatarFactory recovery", () => {
     expect(avatar.root.parent).toBeNull();
     expect(parent.children).toHaveLength(0);
     // A later avatar still gets the mannequin.
-    expect(skinnedOf(factory.create("A1", "A").root)).toHaveLength(1);
+    expect(skinnedOf(factory.create("A1", "A").root)).toHaveLength(LOADED);
   });
 });
 

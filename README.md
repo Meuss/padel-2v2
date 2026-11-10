@@ -22,7 +22,7 @@ What V2 has:
   live score and names.
 - The regulation cage: glass and metal mesh at regulation heights, each with its
   own bounce, and a sagging net.
-- Mannequin players in Azul and Rojo kits.
+- Realistic players in Azul and Rojo kits, with motion-captured strokes.
 - Drive, Lob and an automatic Smash, each with Timing (early, perfect, late).
 - An aimed serve: toss, then strike at the top.
 - Lag-compensated hits and client-side prediction.
