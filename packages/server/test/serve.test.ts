@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  SERVE,
   SERVICE_LINE_DIST,
+  laneX,
   TICK_RATE,
   TOSS,
   tossApex,
@@ -327,5 +329,99 @@ describe("a new server after a Fault", () => {
     expect(m.eventKind).toBe("fault");
     expect(m.event).toBe("FAULT");
     expect(m.pointB).toBe("0");
+  });
+});
+
+describe("the server's partner", () => {
+  const four = [
+    { slot: "A1", team: "A" },
+    { slot: "A2", team: "A" },
+    { slot: "B1", team: "B" },
+    { slot: "B2", team: "B" },
+  ] as const;
+
+  /** Miss two tosses in a row (a double fault) so the next point is set up. */
+  function nextPoint(engine: MatchEngine, now: number): number {
+    for (let fault = 0; fault < 2; fault++) {
+      expect(engine.startToss(engine.currentServer!, now)).toBe(true);
+      for (let i = 0; i < 60 * 10 && engine.phase === "serve"; i++) {
+        now += 1000 / TICK_RATE;
+        engine.tick(now, { x: 0, y: 1.2, z: 0 }, 0, []);
+      }
+      for (let i = 0; i < 60 * 10 && engine.phase !== "serve"; i++) {
+        now += 1000 / TICK_RATE;
+        engine.tick(now, { x: 0, y: 1.2, z: 0 }, 0, []);
+      }
+    }
+    return now;
+  }
+
+  it("waits at the net in its own lane, which it keeps while the server changes halves", () => {
+    const engine = new MatchEngine();
+    engine.setRoster([...four], 0);
+    const first = { server: engine.serverStand()!, partner: engine.partnerStand()! };
+    expect(first.server.slot).toBe("A1");
+    expect(first.partner.slot).toBe("A2");
+    expect(Math.sign(first.partner.z)).toBe(Math.sign(first.server.z));
+    expect(Math.abs(first.partner.z)).toBe(SERVE.partnerNetM);
+    expect(first.partner.x).toBe(laneX("A2", Math.sign(first.server.z) as -1 | 1));
+
+    nextPoint(engine, 0);
+    const second = { server: engine.serverStand()!, partner: engine.partnerStand()! };
+    expect(second.server.slot).toBe("A1");
+    expect(second.server.x).toBe(-first.server.x); // the server swaps halves…
+    expect(second.partner).toEqual(first.partner); // …its partner does not
+  });
+
+  it("has no stand without a teammate", () => {
+    const engine = new MatchEngine();
+    engine.setRoster(
+      [
+        { slot: "A1", team: "A" },
+        { slot: "B1", team: "B" },
+      ],
+      0,
+    );
+    expect(engine.partnerStand()).toBeNull();
+  });
+
+  it("is where a Bot partner waits for the serve", async () => {
+    const room = await Room.create({ seed: SEED });
+    const p = fakeClient("p1");
+    room.addClient(p.client);
+    room.claimSlot("p1", "Ana");
+    for (let i = 0; i < 3; i++) room.addBot("p1"); // seats fill B1, A2 (the server's partner), B2
+    const serving = () => p.last("match")?.phase === "serve" && p.last("match")?.serverSlot === "A1";
+    expect(stepUntil(room, serving, 10 * TICK_RATE)).not.toBeNull();
+    // Three seconds: a Bot partner seated after the setup walks up; one already there stays.
+    for (let i = 0; i < 3 * TICK_RATE; i++) room.step();
+    expect(p.last("match")!.phase).toBe("serve");
+    const snap = p.last("snapshot")!;
+    const me = snap.players.find((s) => s.slot === "A1")!;
+    const partner = snap.players.find((s) => s.slot === "A2")!;
+    const side = Math.sign(me.pos.z) as -1 | 1;
+    expect(Math.sign(partner.pos.z)).toBe(side);
+    expect(Math.abs(partner.pos.z)).toBeCloseTo(SERVE.partnerNetM, 1);
+    expect(partner.pos.x).toBeCloseTo(laneX("A2", side), 1);
+  });
+});
+
+describe("the toss", () => {
+  it("is held in front of the server and to its racket side, clear of the body", () => {
+    const engine = new MatchEngine();
+    engine.setRoster(
+      [
+        { slot: "A1", team: "A" },
+        { slot: "B1", team: "B" },
+      ],
+      0,
+    );
+    const server = engine.serverStand()!;
+    const side = Math.sign(server.z);
+    const action = engine.tick(0, { x: 0, y: 0, z: 0 }, 0, []);
+    const hold = "hold" in action && action.hold ? action.hold : null;
+    expect(hold).not.toBeNull();
+    expect(hold!.z - server.z).toBeCloseTo(-side * SERVE.tossAheadM); // toward the net
+    expect(hold!.x - server.x).toBeCloseTo(side * SERVE.tossRightM); // the right hand's side
   });
 });

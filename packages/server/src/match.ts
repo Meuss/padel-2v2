@@ -20,6 +20,7 @@ import {
   SERVE,
   SERVICE_LINE_DIST,
   TOSS,
+  laneX,
   leftCage,
   netHeightAt,
   serveTarget,
@@ -229,6 +230,18 @@ export class MatchEngine {
   receiverStand(): { slot: Slot; x: number; z: number } | null {
     if (this.phase !== "serve" || !this.receiverSlot) return null;
     return { slot: this.receiverSlot, x: this.receiverPos.x, z: this.receiverPos.z };
+  }
+
+  /**
+   * Where the server's partner waits for the serve: up at the net, in its own lane. The
+   * partner is whoever sits in the server's team now (a seat may fill after the setup).
+   */
+  partnerStand(): { slot: Slot; x: number; z: number } | null {
+    if (this.phase !== "serve" || !this.serverSlot) return null;
+    const team = this.teamOf(this.serverSlot);
+    const partner = this.players.find((p) => p.team === team && p.slot !== this.serverSlot);
+    if (!partner) return null;
+    return { slot: partner.slot, x: laneX(partner.slot, this.serveSide), z: this.serveSide * SERVE.partnerNetM };
   }
 
   get currentSetupId(): number {
@@ -693,7 +706,13 @@ export class MatchEngine {
     this.serveAttempt = attempt;
 
     this.serverPos = { x: this.serveXSign * 2.5, z: this.serveSide * (HALF_L - 0.8) };
-    this.holdPos = { x: this.serverPos.x, y: SERVE.height, z: this.serverPos.z };
+    // Held in front of the server and to its racket side (its right is +x when serveSide is
+    // +1), so the toss shows clear of the body.
+    this.holdPos = {
+      x: this.serverPos.x + this.serveSide * SERVE.tossRightM,
+      y: SERVE.height,
+      z: this.serverPos.z - this.serveSide * SERVE.tossAheadM,
+    };
 
     this.receiverPos = {
       x: this.targetXSign * 2.5,

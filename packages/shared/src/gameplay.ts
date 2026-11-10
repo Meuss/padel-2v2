@@ -3,8 +3,17 @@
  * client for prediction. No physics-engine or DOM dependencies, so these
  * are trivially unit-testable and identical on both sides.
  */
-import type { Vec2, Vec3 } from "./messages.js";
-import { COURT, PLAYER } from "./constants.js";
+import type { Slot, Vec2, Vec3 } from "./messages.js";
+import { COURT, LANE_X, PLAYER } from "./constants.js";
+
+/**
+ * A seat's lane, as world x (m), for a team defending the half on `side` (its z sign). Slot 1
+ * plays its right (the deuce side it serves from first), slot 2 its left, as seen facing the
+ * net, so a lane holds through ends changes. A player facing +z (side −1) has its right at −x.
+ */
+export function laneX(slot: Slot, side: -1 | 1): number {
+  return (slot.endsWith("1") ? 1 : -1) * side * LANE_X;
+}
 
 /** Cap a move vector to unit length so diagonals aren't faster than cardinals. */
 export function normalizeMove(x: number, z: number): Vec2 {

@@ -15,6 +15,7 @@ import {
   stepPlayer,
   swingConnects,
   resolveKind,
+  laneX,
   timeToClosest,
   tossApex,
   type InputMsg,
@@ -50,7 +51,7 @@ export interface BotContext<S extends BotSeat> {
   ball: { pos: Vec3; vel: Vec3 };
   /** The team that last struck the ball: bots never swing at their own team's ball. */
   lastHitTeam: Team | null;
-  match: Pick<MatchEngine, "phase" | "currentServer" | "tossElapsed" | "startToss" | "serviceBox">;
+  match: Pick<MatchEngine, "phase" | "currentServer" | "tossElapsed" | "startToss" | "serviceBox" | "partnerStand">;
   /** Seeded, so a seeded room replays the same match. */
   rng: Rng;
   /** Strike the toss now, aimed at a ground point. */
@@ -74,20 +75,23 @@ export function updateBots<S extends BotSeat>(ctx: BotContext<S>, now: number): 
   const unit = (v: number) => clamp(v, -1, 1);
   /** Teams with a bot swinging this tick: two teammates on one tick would be a double hit. */
   const swinging = new Set<Team>();
+  const partner = match.partnerStand();
   for (const ps of seats) {
     if (!ps.isBot) continue;
     const s = ps.side;
-    const laneX = ps.slot.endsWith("1") ? -2.5 : 2.5; // left vs right lane
+    const lane = laneX(ps.slot, s); // our right or left half, held through ends changes
     const backZ = s * (halfL - 1.8); // home: near our own baseline
     const teammates = seats.filter((p) => p.team === ps.team).length;
-    const laneOk = teammates <= 1 ? true : laneX < 0 ? ball.x <= 0.3 : ball.x >= -0.3;
+    const laneOk = teammates <= 1 ? true : lane < 0 ? ball.x <= 0.3 : ball.x >= -0.3;
     const onOurSide = Math.sign(ball.z) === s;
     const incoming = Math.sign(vel.z) === s; // ball travelling toward our court
     const near = Math.hypot(ball.x - ps.pos.x, ball.z - ps.pos.z) < 3;
     const chase = onOurSide && laneOk && (incoming || near);
-    // Target: the ball if it's ours to take, otherwise our back-court lane spot.
-    const tx = chase ? ball.x : laneX;
-    const tz = chase ? ball.z : backZ;
+    // Target: the ball if it's ours to take; before the serve the server's partner holds its
+    // spot at the net; otherwise our back-court lane spot.
+    const atNet = partner?.slot === ps.slot ? partner : null;
+    const tx = chase ? ball.x : (atNet?.x ?? lane);
+    const tz = chase ? ball.z : (atNet?.z ?? backZ);
     const input: InputMsg = {
       t: "input",
       seq: 0,

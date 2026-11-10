@@ -75,7 +75,16 @@ export const SERVICE_LINE_DIST = 6.95;
 export const SERVE = {
   height: 0.95, // launch height — below the waist
   flightTime: 1.1, // seconds to reach the target bounce point (higher, clearing arc)
+  /** The server's partner waits this far (m) from the net, in its own lane (see `laneX`). */
+  partnerNetM: 3,
+  /** The ball is held and tossed this far (m) in front of the server, toward the net… */
+  tossAheadM: 0.35,
+  /** …and this far (m) to the server's right, the racket side, clear of the body. */
+  tossRightM: 0.55,
 } as const;
+
+/** |x| (m) of the middle of each lane: the left and right halves across the court. */
+export const LANE_X = 2.5;
 
 export const SHOT = {
   /** Ball height (m) at contact above which (strictly) a swing becomes a Smash. */

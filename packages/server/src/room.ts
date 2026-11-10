@@ -906,18 +906,17 @@ export class Room {
     return aim && len > 1e-6 ? { x: aim.x / len, z: aim.z / len } : { x: 0, z: -ps.side };
   }
 
-  /** Teleport the server (and receiver) into place when a point is set up, and
+  /** Teleport the server, the receiver and the server's partner into place when a point is set up, and
    *  keep the server pinned at the serve spot while awaiting the serve. */
   private placeServeAvatars(): void {
     if (this.match.phase !== "serve") return;
     if (this.match.currentSetupId !== this.lastSetupId) {
       this.lastSetupId = this.match.currentSetupId;
-      const r = this.match.receiverStand();
-      if (r) {
-        const ps = this.slots.get(r.slot);
+      for (const stand of [this.match.receiverStand(), this.match.partnerStand()]) {
+        const ps = stand && this.slots.get(stand.slot);
         if (ps) {
-          ps.pos.x = r.x;
-          ps.pos.z = r.z;
+          ps.pos.x = stand.x;
+          ps.pos.z = stand.z;
         }
       }
     }

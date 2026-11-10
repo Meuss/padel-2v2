@@ -3,7 +3,9 @@ import {
   PLAYER,
   PLAYER_BOUNDS,
   TICK_DT,
+  LANE_X,
   confineToHalf,
+  laneX,
   normalizeMove,
   stepPlayer,
   swingConnects,
@@ -75,5 +77,19 @@ describe("stepPlayer", () => {
     expect(p.z).toBe(-PLAYER_BOUNDS.netGap);
     const q = stepPlayer({ x: 0, z: -5 }, { x: 0, z: 0 }, 1, TICK_DT); // side just swapped
     expect(q.z).toBe(PLAYER_BOUNDS.netGap);
+  });
+});
+
+describe("laneX", () => {
+  it("puts slot 1 on its right and slot 2 on its left, facing the net from either half", () => {
+    // Facing +z (side −1) the right hand is at −x; facing −z (side +1) it is at +x.
+    expect(laneX("A1", -1)).toBe(-LANE_X);
+    expect(laneX("A2", -1)).toBe(LANE_X);
+    expect(laneX("B1", 1)).toBe(LANE_X);
+    expect(laneX("B2", 1)).toBe(-LANE_X);
+  });
+
+  it("follows the team through an ends change: the same hand, the other world x", () => {
+    expect(laneX("A1", 1)).toBe(-laneX("A1", -1));
   });
 });
